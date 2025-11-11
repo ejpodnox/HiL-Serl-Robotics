@@ -8,6 +8,7 @@ class WorkspaceCalibrator:
     def __init__(self):
         self.calibration_points = {
             'center': None,
+            'center_rotation': None,
             'front': None,
             'back': None,
             'left': None,
@@ -18,8 +19,11 @@ class WorkspaceCalibrator:
 
         self.samples_per_point = []
 
-    def add_sample(self, position: np.nparray):
-        self.samples_per_point.append(position.copy())
+    def add_sample(self, position: np.nparray,rotation: np.ndarray = None):
+        sample = {'position': position.copy()}
+        if rotation is not None:
+            sample['rotation'] = rotation.copy()
+        self.samples_per_point.append(sample)
 
     def save_point(self, point_name: str):
         if point_name not in self.calibration_points:
@@ -30,8 +34,17 @@ class WorkspaceCalibrator:
             print("ERROR:[NO SAMPLE POINT]")
             return False
         
-        # 计算平均
-        avg_position = np.mean(self.samples_per_point, axis=0)
+        # 计算位置平均
+        positions = [s['position'] for s in self.samples_per_point]
+        avg_position = np.mean(positions, axis=0)
+
+        # 如果是 center 点，还要保存姿态
+        if point_name == 'center' and 'rotation' in self.samples_per_point[0]:
+            rotations = [s['rotation'] for s in self.samples_per_point]
+            avg_rotation = np.mean(rotations, axis=0)
+            self.calibration_points['center_rotation'] = avg_rotation
+            print(f"✓ 保存 'center_rotation': 已记录")
+
         self.calibration_points[point_name] = avg_position
 
         print(f"SAVE '{point_name}': {avg_position}")
@@ -84,13 +97,16 @@ class WorkspaceCalibrator:
             print("Calibration hasn't completed.")
             return False
         
+        calibration_points_data = {}
+        for k, v in self.calibration_points.items():
+            if v is not None:
+                calibration_points_data[k] = v.tolist()
+
         # 准备数据
         data = {
             'calibration_time': time.strftime('%Y-%m-%d %H:%M:%S'),
             'workspace_bounds': self.get_workspace_bounds(),
-            'calibration_points': {
-                k: v.tolist() for k, v in self.calibration_points.items()
-            }
+            'calibration_points': calibration_points_data
         }
 
         filepath.parent.mkdir(parents=True, exist_ok=True)

@@ -4,6 +4,7 @@ VisionPro 工作空间标定脚本
 """
 import sys
 import time
+import argparse
 from pathlib import Path
 
 # 添加路径
@@ -41,9 +42,17 @@ def print_instructions():
 
 
 def main():
+
+    parser = argparse.ArgumentParser(description='VisionPro 空间标定')
+    parser.add_argument('--ip',type=str, default='192.168.1.115')
+    parser.add_argument('--left_hand',action='store_true')
+    parser.add_argument('--output',type=str, default=None)
+
+    args = parser.parse_args()
+
     # 配置
-    AVP_IP = "10.31.181.201"  # 修改为你的 VisionPro IP
-    USE_RIGHT_HAND = True
+    AVP_IP = args.ip  # 修改为你的 VisionPro IP
+    USE_RIGHT_HAND = not args.left_hand
 
     SAVE_PATH = Path(__file__).parent.parent / "config" / "calibration.yaml"
     
@@ -91,7 +100,7 @@ def main():
                 key = kb.get_key(timeout=0.01)
                 
                 # 获取当前手部位置
-                position, _ = bridge.get_hand_relative_to_head()
+                position, rotation = bridge.get_hand_relative_to_head()
                 
                 # 处理按键
                 if key:
@@ -126,8 +135,12 @@ def main():
                     # 检查按键是否还在按下（简化：假设一直按）
                     elapsed = time.time() - key_press_start
                     
-                    if elapsed < 2.0:  # 持续采样 2 秒
-                        calibrator.add_sample(position)
+                    if elapsed < 2.0:
+                        # 如果是 center 点，保存姿态
+                        if current_key == '0':
+                            calibrator.add_sample(position, rotation)
+                        else:
+                            calibrator.add_sample(position)
                         
                         # 显示进度
                         if int(elapsed * 10) % 5 == 0:  # 每 0.5 秒打印
