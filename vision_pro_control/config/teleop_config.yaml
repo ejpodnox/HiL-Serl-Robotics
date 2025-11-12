@@ -1,0 +1,36 @@
+# VisionPro 遥操作配置文件
+
+# VisionPro 连接
+visionpro:
+  ip: "10.31.181.201"
+  use_right_hand: true
+
+# 机械臂连接
+robot:
+  ip: "192.168.1.10"
+
+# 标定文件
+calibration:
+  file: "config/calibration.yaml"
+
+# 坐标映射参数
+mapper:
+  position_gain: 0.5          # 位置增益
+  rotation_gain: 0.8          # 旋转增益
+  max_linear_velocity: 0.2    # 最大线速度 (m/s)
+  max_angular_velocity: 0.5   # 最大角速度 (rad/s)
+  deadzone_radius: 0.02       # 死区半径 (m)
+  filter_alpha: 0.3           # 滤波系数 (0-1)
+
+# 安全限制（会覆盖 mapper 的设置，取更严格的）
+safety:
+  max_linear_velocity: 0.1    # 安全最大线速度 (m/s)
+  max_angular_velocity: 0.3   # 安全最大角速度 (rad/s)
+  enable_safety_check: true   # 启用安全检查
+
+# 夹爪控制
+gripper:
+  pinch_threshold: 0.02       # 捏合判定阈值 (m)
+  max_effort: 100.0           # 最大力度
+  open_position: 0.0          # 张开位置
+  close_position: 0.8         # 闭合位置
