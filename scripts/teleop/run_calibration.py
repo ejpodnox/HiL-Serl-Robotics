@@ -44,7 +44,7 @@ def print_instructions():
 def main():
 
     parser = argparse.ArgumentParser(description='VisionPro 空间标定')
-    parser.add_argument('--ip',type=str, default='192.168.1.115')
+    parser.add_argument('--ip',type=str, default='192.168.1.125')
     parser.add_argument('--left_hand',action='store_true')
     parser.add_argument('--output',type=str, default=None)
 
@@ -168,4 +168,4 @@ def main():
 
 
 if __name__ == "__main__":
-    print(f"Path:{Path(__file__)}")
+    main()

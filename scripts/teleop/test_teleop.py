@@ -1,5 +1,11 @@
 # test_visionpro_connection.py
 import time
+import sys
+from pathlib import Path
+
+# 添加路径
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 from VisionProTeleop.avp_stream import VisionProStreamer
 
 def test_connection(ip="192.168.1.125"):
@@ -15,9 +21,11 @@ def test_connection(ip="192.168.1.125"):
         for i in range(10):
             time.sleep(1)
             
+            data = streamer.latest
+
             # 获取hand pose
-            hand_data = streamer.get_hand_pose()
-            head_data = streamer.get_head_pose()
+            hand_data = data['head']
+            head_data = data['right_wrist']
             
             print(f"[{i+1}s] Hand: {hand_data is not None and hand_data.size > 0}, "
                   f"Head: {head_data is not None and head_data.size > 0}")

@@ -8,8 +8,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from visionpro_control.core.calibrator import WorkspaceCalibrator
-from visionpro_control.core.coordinate_mapper import CoordinateMapper
+from vision_pro_control.core.calibrator import WorkspaceCalibrator
+from vision_pro_control.core.coordinate_mapper import CoordinateMapper
 
 
 def test_calibration_load():
