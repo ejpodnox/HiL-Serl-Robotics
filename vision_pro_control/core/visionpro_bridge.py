@@ -39,6 +39,9 @@ class VisionProBridge:
         while self.running:
             try:
                 r = self.streamer.latest
+                
+                if not self._validate_data(r):
+                    continue  # 跳过格式不正确的数据包
 
                 with self.data_lock:
                     self.lastest_data['head_pose'] = r['head'][0]
@@ -77,3 +80,52 @@ class VisionProBridge:
             pinch_distance = self.lastest_data['pinch_distance']
 
         return pinch_distance < threshold
+
+    def _validate_data(self, r: dict) -> bool:
+        """
+        验证 VisionPro 数据格式
+        Args:
+            r: VisionPro 数据字典
+        Returns:
+            bool: 数据格式是否正确
+        """
+        try:
+            # 检查必需的键
+            required_keys = ['head', 'right_wrist', 'left_wrist', 
+                            'right_pinch_distance', 'left_pinch_distance',
+                            'right_wrist_roll', 'left_wrist_roll']
+            
+            for key in required_keys:
+                if key not in r:
+                    return False
+            
+            # 检查 head 格式
+            if not isinstance(r['head'], np.ndarray) or r['head'].shape != (1, 4, 4):
+                return False
+            
+            # 检查 wrist 格式
+            if not isinstance(r['right_wrist'], np.ndarray) or r['right_wrist'].shape != (1, 4, 4):
+                return False
+            
+            if not isinstance(r['left_wrist'], np.ndarray) or r['left_wrist'].shape != (1, 4, 4):
+                return False
+            
+            # 检查 pinch_distance 格式
+            if not isinstance(r['right_pinch_distance'], (float, int)):
+                return False
+            
+            if not isinstance(r['left_pinch_distance'], (float, int)):
+                return False
+            
+            # 检查 wrist_roll 格式
+            if not isinstance(r['right_wrist_roll'], (float, int)):
+                return False
+            
+            if not isinstance(r['left_wrist_roll'], (float, int)):
+                return False
+            
+            return True
+            
+        except Exception as e:
+            print(f"数据验证错误: {e}")
+            return False
