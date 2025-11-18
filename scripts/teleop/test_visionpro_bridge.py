@@ -7,9 +7,9 @@ import time
 from pathlib import Path
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from vision_pro_control.core.visionpro_bridge import VisionProBridge
+from visionpro_control.core.visionpro_bridge import VisionProBridge
 
 
 def test_bridge():

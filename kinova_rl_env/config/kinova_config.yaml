@@ -1,0 +1,112 @@
+# Kinova RL Environment Configuration
+
+# ============ Robot Configuration ============
+robot:
+  # 机器人基本参数
+  ip: "192.168.1.10"
+  dof: 7
+  gripper_dof: 1
+  
+  # 关节限制 (根据Kinova Gen3手册)
+  joint_limits:
+    # 位置限制 (rad)
+    position_min: [-3.14, -2.41, -3.14, -2.66, -3.14, -2.23, -3.14]
+    position_max: [3.14, 2.41, 3.14, 2.66, 3.14, 2.23, 3.14]
+    # 速度限制 (rad/s)
+    velocity_max: [1.3, 1.3, 1.3, 1.3, 1.2, 1.2, 1.2]
+  
+  # Home位置 (安全起始位置)
+  home_position: [0.0, 0.26, 0.0, -1.57, 0.0, 1.31, 0.0]
+
+# ============ ROS2 Topics ============
+ros2:
+  # Topic names (明天测试时可能需要调整)
+  joint_state_topic: "/joint_states"
+  velocity_command_topic: "/velocity_controller/commands"
+  gripper_command_topic: "/gripper_controller/gripper_cmd/goal"
+  
+  # 节点名称
+  node_name: "kinova_rl_env"
+
+# ============ Control Parameters ============
+control:
+  frequency: 20  # Hz, 控制频率
+  dt: 0.05       # 1/frequency, 自动计算但可以手动覆盖
+  
+  # Action scaling (安全起见，缩放到速度限制的一部分)
+  action_scale: 0.5  # action * action_scale * velocity_max
+  
+  # Episode limits
+  max_episode_steps: 500
+  
+  # 超时设置
+  reset_timeout: 5.0  # 秒, reset时的最大等待时间
+
+# ============ Observation Space ============
+observation:
+  # 包含哪些状态
+  include_joint_positions: true
+  include_joint_velocities: true
+  include_gripper_position: false  # Phase 2暂不用
+  include_end_effector_pose: false  # Phase 2暂不用
+  
+  # 状态维度 (自动计算，但这里记录方便查看)
+  # state_dim = 7 pos + 7 vel = 14 (Phase 2)
+  state_dim: 14
+
+# ============ Action Space ============
+action:
+  # Action类型
+  type: "joint_velocity"  # "joint_velocity" or "joint_position"
+  
+  # Action维度
+  dim: 7  # 7个关节 (Phase 2不包括gripper)
+  
+  # Action范围 (归一化后)
+  low: -1.0
+  high: 1.0
+
+# ============ Reward Configuration ============
+reward:
+  # Reward类型
+  type: "sparse"  # "sparse" or "dense" or "classifier"
+  
+  # Sparse reward (Phase 2)
+  sparse_reward:
+    success: 1.0
+    failure: 0.0
+    step: 0.0
+  
+  # Reward classifier (Phase 4)
+  classifier:
+    enabled: false
+    checkpoint_path: null
+    threshold: 0.5
+
+# ============ Camera Configuration ============
+camera:
+  enabled: false  # Phase 3启用
+  
+  # RealSense相机
+  realsense_cameras:
+    wrist_1:
+      serial_number: "123456789"  # 替换为实际序列号
+      topic: "/camera/wrist_1/color/image_raw"
+    # wrist_2:
+    #   serial_number: "987654321"
+    #   topic: "/camera/wrist_2/color/image_raw"
+  
+  # 图像处理
+  image_size: [224, 224]  # (height, width)
+  crop: null  # 如果需要裁剪: [y_min, y_max, x_min, x_max]
+
+# ============ Logging & Debug ============
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  log_episode_stats: true
+  log_frequency: 10  # 每N步打印一次
+
+debug:
+  verbose: false
+  save_trajectories: false
+  trajectory_save_path: "./trajectories"

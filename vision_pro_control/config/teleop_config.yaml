@@ -15,12 +15,13 @@ calibration:
 
 # 坐标映射参数
 mapper:
-  position_gain: 0.5          # 位置增益
+  position_gain: 0.8          # 位置增益（提高到0.8以适应球形空间）
   rotation_gain: 0.8          # 旋转增益
   max_linear_velocity: 0.2    # 最大线速度 (m/s)
   max_angular_velocity: 0.5   # 最大角速度 (rad/s)
-  deadzone_radius: 0.02       # 死区半径 (m)
   filter_alpha: 0.3           # 滤波系数 (0-1)
+  
+  # 注意：deadzone_radius 现在在 calibration.yaml 中定义
 
 # 安全限制（会覆盖 mapper 的设置，取更严格的）
 safety:
@@ -28,9 +29,22 @@ safety:
   max_angular_velocity: 0.3   # 安全最大角速度 (rad/s)
   enable_safety_check: true   # 启用安全检查
 
-# 夹爪控制
+# 夹爪控制（新增连续控制模式）
 gripper:
-  pinch_threshold: 0.02       # 捏合判定阈值 (m)
-  max_effort: 100.0           # 最大力度
-  open_position: 0.0          # 张开位置
-  close_position: 0.8         # 闭合位置
+  control_mode: "continuous"  # "continuous" 或 "binary"
+  
+  # 连续控制参数
+  pinch_distance_open: 0.08   # 完全张开时的捏合距离 (m)
+  pinch_distance_close: 0.01  # 完全闭合时的捏合距离 (m)
+  
+  # 夹爪位置范围
+  gripper_open_position: 0.0   # 夹爪完全张开
+  gripper_close_position: 0.8  # 夹爪完全闭合
+  
+  max_effort: 100.0            # 最大力度
+  update_threshold: 0.005      # 位置变化阈值，小于此值不发送指令 (避免抖动)
+  
+  # 向后兼容：二值控制参数（如果 control_mode = "binary"）
+  pinch_threshold: 0.02        # 捏合判定阈值
+  open_position: 0.0
+  close_position: 0.8

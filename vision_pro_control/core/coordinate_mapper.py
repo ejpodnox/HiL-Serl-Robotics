@@ -1,5 +1,6 @@
 """
 坐标映射器：VisionPro 手部空间 → 机械臂控制空间
+球形工作空间模型
 """
 import numpy as np
 from pathlib import Path
@@ -8,7 +9,7 @@ from scipy.spatial.transform import Rotation as R
 
 
 class CoordinateMapper:
-    """将 VisionPro 手部相对位姿映射到机械臂控制指令"""
+    """将 VisionPro 手部相对位姿映射到机械臂控制指令（球形工作空间）"""
     
     def __init__(self, calibration_file: Path):
         """
@@ -25,7 +26,6 @@ class CoordinateMapper:
         self.rotation_gain = 1.0  # 角速度增益
         self.max_linear_velocity = 0.3  # m/s
         self.max_angular_velocity = 1.0  # rad/s
-        self.deadzone_radius = 0.02  # 死区半径 (m)
         
         # 滤波器状态
         self.filter_alpha = 0.3  # 低通滤波系数 (0-1, 越小越平滑)
@@ -42,73 +42,80 @@ class CoordinateMapper:
         with open(self.calibration_file, 'r') as f:
             data = yaml.safe_load(f)
         
-        bounds = data['workspace_bounds']
-        points = data['calibration_points']
+        # 工作空间中心
+        center = data['workspace_center']
+        self.center_position = np.array(center['position'])
+        self.center_rotation = np.array(center['rotation'])
         
         # 工作空间参数
-        self.center = np.array(bounds['center'])
-        self.x_range = np.array(bounds['x_range'])
-        self.y_range = np.array(bounds['y_range'])
-        self.z_range = np.array(bounds['z_range'])
-        self.x_span = bounds['x_span']
-        self.y_span = bounds['y_span']
-        self.z_span = bounds['z_span']
-        
-        # 标定姿态（用于相对旋转）
-        if 'center_rotation' in points and points['center_rotation'] is not None:
-            self.center_rotation = np.array(points['center_rotation'])
-        else:
-            self.center_rotation = np.eye(3)
-            print("警告: 未找到 center_rotation，使用单位矩阵")
+        params = data['workspace_params']
+        self.control_radius = params['control_radius']
+        self.deadzone_radius = params['deadzone_radius']
         
         print(f"✓ 已加载标定数据: {self.calibration_file}")
-        print(f"  工作空间中心: {self.center}")
-        print(f"  工作空间范围: X={self.x_span:.3f}, Y={self.y_span:.3f}, Z={self.z_span:.3f}")
+        print(f"  工作空间中心: {self.center_position}")
+        print(f"  控制半径: {self.control_radius} m")
+        print(f"  死区半径: {self.deadzone_radius} m")
         
-    def normalize_position(self, position: np.ndarray) -> np.ndarray:
+    def compute_spherical_mapping(self, position: np.ndarray) -> Tuple[np.ndarray, float]:
         """
-        将手部位置归一化到 [-1, 1] 范围
-        超出边界会饱和到 ±1
+        球形工作空间映射
+        
         Args:
             position: 手部相对头部的位置 (3,)
         Returns:
-            normalized: 归一化位置 (3,)
+            direction: 运动方向单位向量 (3,)
+            magnitude: 速度幅度 [0, 1]
         """
-        # 计算相对中心的偏移
-        offset = position - self.center
-
-        # 归一化到 [-1, 1]
-        normalized = np.zeros(3)
-        normalized[0] = offset[0] / (self.x_span / 2.0)  # X 方向
-        normalized[1] = offset[1] / (self.y_span / 2.0)  # Y 方向
-        normalized[2] = offset[2] / (self.z_span / 2.0)  # Z 方向
-
-        # 饱和限制（方案 1）
-        normalized = np.clip(normalized, -1.0, 1.0)
-        return normalized
+        # 1. 计算相对中心的偏移向量
+        offset = position - self.center_position
+        distance = np.linalg.norm(offset)
         
-    def apply_deadzone(self, normalized_pos: np.ndarray) -> np.ndarray:
-        """
-        应用死区：中心附近不动
-        Args:
-            normalized_pos: 归一化位置 (3,)
-        Returns:
-            位置（应用死区后）
-        """
-        # 计算到中心的距离
-        distance = np.linalg.norm(normalized_pos)
+        # 2. 计算方向
+        if distance < 1e-6:
+            return np.zeros(3), 0.0
         
-        # 归一化的死区半径
-        deadzone_norm = self.deadzone_radius / (np.mean([self.x_span, self.y_span, self.z_span]) / 2.0)
+        direction = offset / distance
         
-        if distance < deadzone_norm:
-            return np.zeros(3)
+        # 3. 计算速度幅度（分段映射）
+        if distance < self.deadzone_radius:
+            # 死区内：不动
+            magnitude = 0.0
+        elif distance < self.control_radius:
+            # 工作区：线性映射
+            magnitude = (distance - self.deadzone_radius) / (self.control_radius - self.deadzone_radius)
         else:
-            # 线性缩放：死区边缘为 0，边界为 1
-            scale = (distance - deadzone_norm) / (1.0 - deadzone_norm)
-            scale = min(scale, 1.0)
-            return normalized_pos * scale
+            # 超出控制半径：饱和
+            magnitude = 1.0
+        
+        return direction, magnitude
+        
+    def position_to_linear_velocity(self, position: np.ndarray) -> np.ndarray:
+        """
+        将手部位置映射到线速度
+        
+        Args:
+            position: 手部相对头部的位置 (3,)
+        Returns:
+            linear_velocity: 线速度 (3,) [vx, vy, vz]
+        """
+        # 1. 球形映射
+        direction, magnitude = self.compute_spherical_mapping(position)
+        
+        # 2. 计算速度向量
+        velocity = direction * magnitude * self.position_gain
+        
+        # 3. 限制最大速度
+        speed = np.linalg.norm(velocity)
+        if speed > self.max_linear_velocity:
+            velocity = velocity / speed * self.max_linear_velocity
             
+        # 4. 低通滤波
+        self.filtered_linear_vel = (self.filter_alpha * velocity + 
+                                    (1 - self.filter_alpha) * self.filtered_linear_vel)
+        
+        return self.filtered_linear_vel
+        
     def compute_relative_rotation(self, current_rotation: np.ndarray) -> np.ndarray:
         """
         计算相对于标定姿态的旋转差
@@ -128,35 +135,6 @@ class CoordinateMapper:
         rotvec = rot.as_rotvec()
         
         return rotvec
-        
-    def position_to_linear_velocity(self, position: np.ndarray) -> np.ndarray:
-        """
-        将手部位置映射到线速度
-        
-        Args:
-            position: 手部相对头部的位置 (3,)
-        Returns:
-            linear_velocity: 线速度 (3,) [vx, vy, vz]
-        """
-        # 1. 归一化
-        normalized = self.normalize_position(position)
-        
-        # 2. 应用死区
-        normalized = self.apply_deadzone(normalized)
-        
-        # 3. 计算速度（简单比例控制）
-        velocity = normalized * self.position_gain
-        
-        # 4. 限制最大速度
-        speed = np.linalg.norm(velocity)
-        if speed > self.max_linear_velocity:
-            velocity = velocity / speed * self.max_linear_velocity
-            
-        # 5. 低通滤波
-        self.filtered_linear_vel = (self.filter_alpha * velocity + 
-                                    (1 - self.filter_alpha) * self.filtered_linear_vel)
-        
-        return self.filtered_linear_vel
         
     def rotation_to_angular_velocity(self, rotation: np.ndarray) -> np.ndarray:
         """
@@ -193,10 +171,6 @@ class CoordinateMapper:
             rotation: 手腕旋转矩阵 (3, 3)
         Returns:
             twist: 字典格式的 Twist 消息
-                {
-                    'linear': {'x': float, 'y': float, 'z': float},
-                    'angular': {'x': float, 'y': float, 'z': float}
-                }
         """
         # 计算速度
         linear_vel = self.position_to_linear_velocity(position)
@@ -224,13 +198,7 @@ class CoordinateMapper:
         self.filtered_angular_vel = np.zeros(3)
         
     def set_gains(self, position_gain: float = None, rotation_gain: float = None):
-        """
-        设置控制增益
-        
-        Args:
-            position_gain: 位置增益
-            rotation_gain: 旋转增益
-        """
+        """设置控制增益"""
         if position_gain is not None:
             self.position_gain = position_gain
             print(f"位置增益: {self.position_gain}")
@@ -240,13 +208,7 @@ class CoordinateMapper:
             print(f"旋转增益: {self.rotation_gain}")
             
     def set_velocity_limits(self, max_linear: float = None, max_angular: float = None):
-        """
-        设置速度限制
-        
-        Args:
-            max_linear: 最大线速度 (m/s)
-            max_angular: 最大角速度 (rad/s)
-        """
+        """设置速度限制"""
         if max_linear is not None:
             self.max_linear_velocity = max_linear
             print(f"最大线速度: {self.max_linear_velocity} m/s")
@@ -256,29 +218,25 @@ class CoordinateMapper:
             print(f"最大角速度: {self.max_angular_velocity} rad/s")
             
     def set_filter_alpha(self, alpha: float):
-        """
-        设置滤波系数
-        
-        Args:
-            alpha: 滤波系数 (0-1)，越小越平滑，但延迟越大
-        """
+        """设置滤波系数"""
         self.filter_alpha = np.clip(alpha, 0.0, 1.0)
         print(f"滤波系数: {self.filter_alpha}")
         
     def print_info(self):
         """打印映射器配置信息"""
-        print("\n" + "="*50)
-        print("坐标映射器配置:")
+        print("\n" + "="*60)
+        print("坐标映射器配置 (球形工作空间):")
+        print("-"*60)
         print(f"  标定文件: {self.calibration_file}")
-        print(f"  工作空间中心: {self.center}")
-        print(f"  工作空间范围: X={self.x_span:.3f}, Y={self.y_span:.3f}, Z={self.z_span:.3f}")
+        print(f"  工作空间中心: {self.center_position}")
+        print(f"  控制半径: {self.control_radius} m")
+        print(f"  死区半径: {self.deadzone_radius} m")
         print(f"  位置增益: {self.position_gain}")
         print(f"  旋转增益: {self.rotation_gain}")
         print(f"  最大线速度: {self.max_linear_velocity} m/s")
         print(f"  最大角速度: {self.max_angular_velocity} rad/s")
-        print(f"  死区半径: {self.deadzone_radius} m")
         print(f"  滤波系数: {self.filter_alpha}")
-        print("="*50 + "\n")
+        print("="*60 + "\n")
 
     @classmethod
     def from_config(cls, config_dict: dict):
@@ -290,7 +248,6 @@ class CoordinateMapper:
         mapper.rotation_gain = mapper_config['rotation_gain']
         mapper.max_linear_velocity = mapper_config['max_linear_velocity']
         mapper.max_angular_velocity = mapper_config['max_angular_velocity']
-        mapper.deadzone_radius = mapper_config['deadzone_radius']
         mapper.filter_alpha = mapper_config['filter_alpha']
         
         return mapper

@@ -80,6 +80,17 @@ class VisionProBridge:
             pinch_distance = self.lastest_data['pinch_distance']
 
         return pinch_distance < threshold
+    
+    def get_pinch_distance(self) -> float:
+        """
+        获取手指捏合距离（连续值）
+        Returns:
+            pinch_distance: 捏合距离 (m)，范围通常 [0.0, 0.1]
+        """
+        with self.data_lock:
+            pinch_distance = self.lastest_data['pinch_distance']
+        
+        return pinch_distance
 
     def _validate_data(self, r: dict) -> bool:
         """
@@ -129,3 +140,5 @@ class VisionProBridge:
         except Exception as e:
             print(f"数据验证错误: {e}")
             return False
+        
+    
