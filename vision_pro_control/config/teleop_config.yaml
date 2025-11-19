@@ -2,12 +2,12 @@
 
 # VisionPro 连接
 visionpro:
-  ip: "10.31.181.201"
+  ip: "192.168.1.125"
   use_right_hand: true
 
 # 机械臂连接
 robot:
-  ip: "192.168.1.10"
+  ip: "192.168.8.10"
 
 # 标定文件
 calibration:

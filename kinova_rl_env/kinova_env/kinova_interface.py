@@ -9,6 +9,12 @@ from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64MultiArray
 import numpy as np
+from std_msgs.msg import Float64
+from sensor_msgs.msg import Image
+import cv2
+
+# 打开摄像头 (0是默认摄像头，可能是1或2)
+cap = cv2.VideoCapture(0)
 
 
 class KinovaInterface:
@@ -27,6 +33,13 @@ class KinovaInterface:
         self.joint_state_topic = '/joint_states'
         self.velocity_command_topic = '/velocity_controller/commands'
         self.num_joints = 7
+
+        self.gripper_command_topic = '/gripper_controller/gripper_cmd'
+        self._gripper_state = 0.0  # 缓存gripper位置
+        
+        # __init__中
+        self.camera_id = 0  # USB摄像头ID
+        self._cap = None
     
     def _joint_state_callback(self, msg):
         self._latest_joint_state = msg
@@ -42,17 +55,29 @@ class KinovaInterface:
             self._joint_state_callback,
             10 
         )
+        
+        self._gripper_pub = self.node.create_publisher(
+            Float64,
+            self.gripper_command_topic,
+            10
+        )
         self._vel_pub = self.node.create_publisher(
             Float64MultiArray,
             self.velocity_command_topic,
             10 
         )
+        self._cap = cv2.VideoCapture(self.camera_id)
+        if not self._cap.isOpened():
+            self.node.get_logger().warn("无法打开摄像头")
     
     def disconnect(self):
         self.node.destroy_node()
         rclpy.shutdown()
         self._latest_joint_state = None
     
+        if self._cap is not None:
+            self._cap.release()
+
     def get_joint_state(self):
         rclpy.spin_once(self.node, timeout_sec=0.01)
         if self._latest_joint_state is None:
@@ -70,6 +95,19 @@ class KinovaInterface:
         msg.data = v_list
 
         self._vel_pub.publish(msg)
+
+    def get_image(self):
+        """获取摄像头图像"""
+        if self._cap is None or not self._cap.isOpened():
+            return None
+        
+        ret, frame = self._cap.read()
+        if not ret:
+            return None
+        
+        # BGR转RGB
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        return image
 
 
 # ============ 使用示例 ============

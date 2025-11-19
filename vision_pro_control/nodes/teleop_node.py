@@ -153,6 +153,13 @@ class TeleopNode(Node):
                 # 发送 Twist 到机械臂
                 self.robot_commander.send_twist(twist)
 
+
+                # ============================================
+                # 夹爪控制代码片段
+                # 用于替换 teleop_node.py 中 control_loop() 的夹爪控制部分
+                # 找到原来的 "# 处理夹爪控制" 部分并替换
+                # ============================================
+
                 # 处理夹爪控制
                 gripper_config = self.config['gripper']
                 control_mode = gripper_config.get('control_mode', 'binary')
@@ -211,7 +218,68 @@ class TeleopNode(Node):
                             )
                             self.get_logger().info('夹爪打开')
                         
-                        self.last_gripper_state = current_pinch     
+                        self.last_gripper_state = current_pinch
+
+                # # 处理夹爪控制
+                # gripper_config = self.config['gripper']
+                # control_mode = gripper_config.get('control_mode', 'binary')
+
+
+                # if control_mode == 'continuous':
+                #     # 连续控制模式
+                #     pinch_distance = self.visionpro_bridge.get_pinch_distance()
+                    
+                #     # 线性映射：pinch_distance [open, close] -> gripper_position [0, 0.8]
+                #     pinch_open = gripper_config['pinch_distance_open']
+                #     pinch_close = gripper_config['pinch_distance_close']
+                #     gripper_open = gripper_config['gripper_open_position']
+                #     gripper_close = gripper_config['gripper_close_position']
+                    
+                #     # 限制范围
+                #     pinch_distance = np.clip(pinch_distance, pinch_close, pinch_open)
+                    
+                #     # 映射到夹爪位置（注意：pinch大 -> gripper小）
+                #     normalized = (pinch_distance - pinch_close) / (pinch_open - pinch_close)
+                #     gripper_position = gripper_close + (gripper_open - gripper_close) * normalized
+                    
+                #     # 防抖：只有变化超过阈值才发送
+                #     update_threshold = gripper_config.get('update_threshold', 0.005)
+                #     if not hasattr(self, 'last_gripper_position'):
+                #         self.last_gripper_position = gripper_position
+                    
+                #     if abs(gripper_position - self.last_gripper_position) > update_threshold:
+                #         self.robot_commander.control_gripper(
+                #             position=float(gripper_position),
+                #             max_effort=gripper_config['max_effort']
+                #         )
+                #         self.last_gripper_position = gripper_position
+                        
+                #         # 每50次循环打印一次夹爪状态
+                #         if self.loop_count % 50 == 0:
+                #             self.get_logger().info(
+                #                 f'夹爪位置: {gripper_position:.3f} (捏合距离: {pinch_distance:.3f}m)'
+                #             )
+
+                # else:
+                #     # 二值控制模式（原有逻辑）
+                #     pinch_threshold = gripper_config['pinch_threshold']
+                #     current_pinch = self.visionpro_bridge.get_pinch_state(threshold=pinch_threshold)
+
+                #     if current_pinch != self.last_gripper_state:
+                #         if current_pinch:
+                #             self.robot_commander.control_gripper(
+                #                 position=gripper_config['close_position'],
+                #                 max_effort=gripper_config['max_effort']
+                #             )
+                #             self.get_logger().info('夹爪闭合')
+                #         else:
+                #             self.robot_commander.control_gripper(
+                #                 position=gripper_config['open_position'],
+                #                 max_effort=gripper_config['max_effort']
+                #             )
+                #             self.get_logger().info('夹爪打开')
+                        
+                #         self.last_gripper_state = current_pinch     
 
                 self.loop_count += 1
                 

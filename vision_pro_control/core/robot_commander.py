@@ -33,7 +33,7 @@ class RobotCommander(Node):
         self.enable_safety_check = True    # 启用安全检查
         
         # 创建 Twist 发布者
-        self.twist_publisher = self.create_pulisher(
+        self.twist_publisher = self.create_publisher(
             Twist,
             '/twist_controller/commands',
             10
@@ -188,7 +188,7 @@ class RobotCommander(Node):
             
         goal = GripperCommand.Goal()
         goal.command.position = position
-        goal.command,max_effort = max_effort
+        goal.command.max_effort = max_effort
         
         future = self.gripper_action_client.send_goal_async(goal)
         

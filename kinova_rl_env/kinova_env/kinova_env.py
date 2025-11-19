@@ -8,26 +8,13 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 import time
+import cv2
 
-# 假设kinova_interface在同一目录
 from kinova_interface import KinovaInterface
 from config_loader import KinovaConfig
+from std_msgs.msg import Float64
 
 class KinovaEnv(gym.Env):
-    """
-    Kinova机器人的Gym环境
-    
-    使用示例:
-        env = KinovaEnv()
-        obs, info = env.reset()
-        
-        for _ in range(100):
-            action = env.action_space.sample()
-            obs, reward, done, truncated, info = env.step(action)
-            if done or truncated:
-                obs, info = env.reset()
-    """
-    
     def __init__(self, config_path=None, config=None):
         super().__init__()
         
@@ -44,18 +31,6 @@ class KinovaEnv(gym.Env):
         self.control_dt = self.config.control.dt
         self.action_scale = self.config.control.action_scale
         self.max_episode_steps = self.config.control.max_episode_steps
-        ...
-        """
-        初始化环境
-        
-        TODO思路:
-        1. 保存配置参数
-        2. 创建KinovaInterface实例
-        3. 定义observation_space (Box类型)
-        4. 定义action_space (Box类型)
-        5. 初始化步数计数器
-        """
-        
         
         # 机器人接口
         self.interface = KinovaInterface(node_name=self.config.ros2.node_name)
@@ -66,38 +41,27 @@ class KinovaEnv(gym.Env):
                 high = np.inf,
                 shape = (self.config.observation.state_dim,),
                 dtype = np.float32
+            ),
+            "image": spaces.Box(
+                low=0,
+                high=255,
+                shape=(self.config.camera.image_size[0], 
+                    self.config.camera.image_size[1], 3),  # (H, W, 3)
+                dtype=np.uint8
             )
         })
 
-        self.action_space = spaces.Dict({
-            "state": spaces.Box(
-                low = self.config.action.low,
-                high = self.config.action.high,
-                shape = (self.config.action.dim,),
-                dtype = np.float32
-            )
-        })
+        self.action_space = spaces.Box(
+            low=self.config.action.low,
+            high=self.config.action.high,
+            shape=(self.config.action.dim,),
+            dtype=np.float32
+        )
         # 状态变量
         self.current_step = 0
         self.episode_return = 0.0
     
     def reset(self, seed=None, options=None):
-        """
-        重置环境到初始状态
-        
-        TODO思路:
-        1. 调用super().reset()处理seed
-        2. 连接机器人 (如果还没连接)
-        3. 发送零速度命令停止机器人
-        4. 等待机器人稳定
-        5. 获取初始observation
-        6. 重置计数器
-        7. 返回 (observation, info)
-        
-        Returns:
-            observation: 初始观察
-            info: 额外信息字典
-        """
         super().reset(seed=seed)
         if self.interface.node is None:
             self.interface.connect()
@@ -112,32 +76,7 @@ class KinovaEnv(gym.Env):
         return obs, info
     
     def step(self, action):
-        """
-        执行一步动作
-        
-        TODO思路:
-        1. 检查action维度
-        2. 裁剪action到[-1, 1]
-        3. 缩放action: scaled = action * action_scale
-        4. 发送scaled velocity到机器人
-        5. 等待control_dt时间
-        6. 获取新的observation
-        7. 计算reward (暂时返回0)
-        8. 判断done/truncated
-        9. 更新计数器
-        10. 返回 (obs, reward, done, truncated, info)
-        
-        Args:
-            action: (7,) numpy array, 范围[-1, 1]
-        
-        Returns:
-            observation: 新观察
-            reward: 奖励值
-            terminated: 是否因达成目标而结束
-            truncated: 是否因超时而结束
-            info: 额外信息
-        """
-        action = np.clip(-1.0,1.0)
+        action = np.clip(action, -1.0, 1.0)
 
         velocity_max = np.array(self.config.robot.joint_limits.velocity_max)
         scaled_velocity = action * self.action_scale * velocity_max
@@ -159,18 +98,124 @@ class KinovaEnv(gym.Env):
         info = {"episode_return": self.episode_return}
         return obs, reward, terminated, truncated, info
     
-    def _get_obs(self):
-        pos, vel = self.interface.get_joint_state()
-        state = np.concatenate(pos, vel)
-        return {"state":state}
+    def _check_safety(self, positions):
+        lower = np.array(self.config.robot.joint_limits.position_min)
+        upper = np.array(self.config.robot.joint_limits.position_max)
+        in_range = np.all((positions >= lower) & (positions <= upper))
+        
+        if in_range == False:
+            safe_positions = np.clip(positions, lower, upper)
+            return safe_positions
+        else:
+            return positions
 
+    def go_home(self, timeout=None):
+        thehold = 0.05
+        Kp = 5
+
+        if timeout is None:
+            timeout = self.config.control.reset_timeout
+        start_time = time.time()
+        while True:
+            if time.time() - start_time > timeout:
+                print("go_home超时")
+                break
+
+            home_pos = self.config.robot.home_position
+            pos, _ = self.interface.get_joint_state()
+
+            if np.allclose(home_pos, pos, atol = thehold):
+                print("到达目标位置")
+                break
+
+
+            velocity = Kp * (home_pos - pos)
+            velocity_max = np.array(self.config.robot.joint_limits.velocity_max)
+            velocity = np.clip(velocity, -velocity_max, velocity_max)  # 限制速度
+            self.interface.send_joint_velocities(velocity)
+                    
+        self.interface.send_joint_velocities([0.0]*7)
+
+        time.sleep(self.control_dt)
+    
+    def set_gripper(self, position):
+        """
+        设置gripper位置
+        
+        TODO:
+        1. 检查gripper是否启用
+        2. 发送gripper命令到对应topic
+        3. 等待执行
+        
+        Args:
+            position: 0.0(全开) 到 1.0(全闭)
+        """
+        # 不知道怎么设置gripper
+
+    def send_gripper_command(self, position):
+        """
+        发送gripper命令
+        
+        Args:
+            position: 0.0(全开) 到 1.0(全闭)
+        """
+
+        
+        # 限制范围
+        position = np.clip(position, 0.0, 1.0)
+        
+        msg = Float64()
+        msg.data = float(position)
+        self._gripper_pub.publish(msg)
+
+    def get_gripper_state(self):
+        """
+        获取gripper当前位置
+        
+        Returns:
+            float: 0.0(全开) 到 1.0(全闭)
+        """
+        # TODO: 需要订阅gripper状态topic
+        # 现在先返回缓存值
+        return self._gripper_state
+
+    def _get_obs(self):
+        
+        # 获取关节状态
+        pos, vel = self.interface.get_joint_state()
+        if pos is None:
+            pos = np.zeros(7)
+            vel = np.zeros(7)
+        
+        # 获取gripper状态
+        gripper = self.interface.get_gripper_state()
+        
+        # 拼接state
+        state = np.concatenate([pos, vel, [gripper]]).astype(np.float32)
+        
+        # 获取图像
+        image = self.interface.get_image()
+        if image is None:
+            image = np.zeros(
+                (self.config.camera.image_size[0],
+                self.config.camera.image_size[1], 3),
+                dtype=np.uint8
+            )
+        else:
+            # resize到指定尺寸
+            image = cv2.resize(
+                image,
+                (self.config.camera.image_size[1], 
+                self.config.camera.image_size[0])
+            )
+        
+        return {
+            "state": state,
+            "image": image
+        }
     
     def _compute_reward(self, obs, action):
-        """
-        todo:
-        Phase 2: 直接返回 0.0 (稀疏奖励)
-        Phase 4: 使用reward classifier
-        """
+
         return 0.0
     
     def close(self):
@@ -184,7 +229,7 @@ if __name__ == '__main__':
     明天可以用这个测试环境
     """
     print("初始化 KinovaEnv...")
-    env = KinovaEnv(control_frequency=20)
+    env = KinovaEnv()
     
     try:
         # 重置

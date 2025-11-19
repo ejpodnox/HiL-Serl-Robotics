@@ -14,7 +14,7 @@ class VisionProBridge:
 
         self.lastest_data = {
             'head_pose' : np.eye(4),
-            'wrist_post' : np.eye(4),
+            'wrist_pose' : np.eye(4),
             'pinch_distance' : 1.0,
             'wrist_roll' : 0.0,
             'timestamp' : time.time()
@@ -63,8 +63,8 @@ class VisionProBridge:
 
     def get_hand_relative_to_head(self):
         with self.data_lock:
-            head_pose = self.lastest_data['head_pose'].copy
-            wrist_pose = self.lastest_data['wrist_pose'].copy
+            head_pose = self.lastest_data['head_pose'].copy()
+            wrist_pose = self.lastest_data['wrist_pose'].copy()
 
         head_inv = np.linalg.inv(head_pose)
         relative_pose = head_inv @ wrist_pose
@@ -90,6 +90,12 @@ class VisionProBridge:
         with self.data_lock:
             pinch_distance = self.lastest_data['pinch_distance']
         
+        return pinch_distance
+
+    def get_pinch_distance(self) -> float:
+        """获取手指捏合距离（连续值）"""
+        with self.data_lock:
+            pinch_distance = self.lastest_data['pinch_distance']
         return pinch_distance
 
     def _validate_data(self, r: dict) -> bool:
