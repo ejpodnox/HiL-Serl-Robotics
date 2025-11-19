@@ -15,18 +15,18 @@ calibration:
 
 # 坐标映射参数
 mapper:
-  position_gain: 0.8          # 位置增益（提高到0.8以适应球形空间）
-  rotation_gain: 0.8          # 旋转增益
-  max_linear_velocity: 0.2    # 最大线速度 (m/s)
-  max_angular_velocity: 0.5   # 最大角速度 (rad/s)
-  filter_alpha: 0.3           # 滤波系数 (0-1)
+  position_gain: 0.3          # 位置增益（提高到0.8以适应球形空间）
+  rotation_gain: 0.3          # 旋转增益
+  max_linear_velocity: 0.02    # 最大线速度 (m/s)
+  max_angular_velocity: 0.1   # 最大角速度 (rad/s)
+  filter_alpha: 0.2           # 滤波系数 (0-1)
   
   # 注意：deadzone_radius 现在在 calibration.yaml 中定义
 
 # 安全限制（会覆盖 mapper 的设置，取更严格的）
 safety:
-  max_linear_velocity: 0.1    # 安全最大线速度 (m/s)
-  max_angular_velocity: 0.3   # 安全最大角速度 (rad/s)
+  max_linear_velocity: 0.01    # 安全最大线速度 (m/s)
+  max_angular_velocity: 0.05   # 安全最大角速度 (rad/s)
   enable_safety_check: true   # 启用安全检查
 
 # 夹爪控制（新增连续控制模式）
