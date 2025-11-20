@@ -66,17 +66,39 @@ action:
   low: -1.0
   high: 1.0
 
+# ============ Task Configuration ============
+task:
+  # 任务名称
+  name: "reaching"  # reaching, pick_and_place, insertion, etc.
+
+  # 目标位置 (TCP目标位姿，在base_link坐标系下)
+  # 格式: [x, y, z, qx, qy, qz, qw]
+  target_pose: [0.5, 0.0, 0.3, 0.0, 1.0, 0.0, 0.0]  # 示例：机械臂前方50cm，高度30cm
+
+  # 成功判定阈值
+  success_threshold:
+    position: 0.02  # 2cm，TCP距离目标的欧式距离
+    orientation: 0.1  # 可选，姿态误差阈值（暂不使用）
+
+  # 是否检查姿态
+  check_orientation: false  # reaching任务通常只检查位置
+
 # ============ Reward Configuration ============
 reward:
   # Reward类型
   type: "sparse"  # "sparse" or "dense" or "classifier"
-  
+
   # Sparse reward (Phase 2)
   sparse_reward:
     success: 1.0
     failure: 0.0
-    step: 0.0
-  
+    step: 0.0  # 每步的基础奖励（通常为0或负值）
+
+  # Dense reward (可选)
+  dense_reward:
+    distance_scale: -1.0  # reward = distance_scale * distance_to_target
+    success_bonus: 1.0    # 到达目标后的额外奖励
+
   # Reward classifier (Phase 4)
   classifier:
     enabled: false
