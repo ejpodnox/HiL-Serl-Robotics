@@ -81,9 +81,11 @@ class RobotCommander(Node):
         ])
         
         angular = np.array([
-            twist_dict['angular']['x'],twist_dict['angular']['y'],twist_dict['angular']['z']
+            twist_dict['angular']['x'],
+            twist_dict['angular']['y'],
+            twist_dict['angular']['z']
         ])
-        np.linalg.norm(angular)
+
         linear_speed = np.linalg.norm(linear)
         angular_speed = np.linalg.norm(angular)
         

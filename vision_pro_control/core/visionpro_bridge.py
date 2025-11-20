@@ -89,13 +89,7 @@ class VisionProBridge:
         """
         with self.data_lock:
             pinch_distance = self.lastest_data['pinch_distance']
-        
-        return pinch_distance
 
-    def get_pinch_distance(self) -> float:
-        """获取手指捏合距离（连续值）"""
-        with self.data_lock:
-            pinch_distance = self.lastest_data['pinch_distance']
         return pinch_distance
 
     def _validate_data(self, r: dict) -> bool:

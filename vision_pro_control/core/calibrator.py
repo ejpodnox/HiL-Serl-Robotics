@@ -3,6 +3,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, Optional
 import time
+from scipy.spatial.transform import Rotation as R
 
 class WorkspaceCalibrator:
     """简化的工作空间标定器 - 球形工作空间模型"""
@@ -43,10 +44,28 @@ class WorkspaceCalibrator:
         # 计算位置平均
         positions = [s['position'] for s in self.samples]
         self.center_position = np.mean(positions, axis=0)
-        
-        # 计算旋转平均（简单平均，实际应用可考虑四元数平均）
+
+        # 计算旋转平均（使用四元数平均，数学上正确）
         rotations = [s['rotation'] for s in self.samples]
-        self.center_rotation = np.mean(rotations, axis=0)
+
+        if len(rotations) == 1:
+            # 只有一个采样，直接使用
+            self.center_rotation = rotations[0]
+        else:
+            # 转换为四元数
+            quaternions = []
+            for rot_matrix in rotations:
+                r = R.from_matrix(rot_matrix)
+                quat = r.as_quat()  # [x, y, z, w]
+                quaternions.append(quat)
+
+            # 四元数平均（简单平均后归一化）
+            mean_quat = np.mean(quaternions, axis=0)
+            mean_quat = mean_quat / np.linalg.norm(mean_quat)  # 归一化
+
+            # 转回旋转矩阵
+            mean_rotation = R.from_quat(mean_quat)
+            self.center_rotation = mean_rotation.as_matrix()
         
         print(f"✓ 已保存中心点")
         print(f"  位置: {self.center_position}")
