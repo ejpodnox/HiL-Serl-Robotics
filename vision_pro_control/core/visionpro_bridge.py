@@ -12,7 +12,7 @@ class VisionProBridge:
         self.running = False
         self.thread = None
 
-        self.lastest_data = {
+        self.latest_data = {
             'head_pose' : np.eye(4),
             'wrist_pose' : np.eye(4),
             'pinch_distance' : 1.0,
@@ -44,17 +44,17 @@ class VisionProBridge:
                     continue  # 跳过格式不正确的数据包
 
                 with self.data_lock:
-                    self.lastest_data['head_pose'] = r['head'][0]
+                    self.latest_data['head_pose'] = r['head'][0]
 
                     if self.use_right_hand:
-                        self.lastest_data['wrist_pose'] = r['right_wrist'][0]
-                        self.lastest_data['pinch_distance'] = r['right_pinch_distance']
-                        self.lastest_data['wrist_roll'] = r['right_wrist_roll']
+                        self.latest_data['wrist_pose'] = r['right_wrist'][0]
+                        self.latest_data['pinch_distance'] = r['right_pinch_distance']
+                        self.latest_data['wrist_roll'] = r['right_wrist_roll']
                     else:
-                        self.lastest_data['wrist_pose'] = r['left_wrist'][0]
-                        self.lastest_data['pinch_distance'] = r['left_pinch_distance']
-                        self.lastest_data['wrist_roll'] = r['left_wrist_roll']
-                self.lastest_data['timestamp'] = time.time()
+                        self.latest_data['wrist_pose'] = r['left_wrist'][0]
+                        self.latest_data['pinch_distance'] = r['left_pinch_distance']
+                        self.latest_data['wrist_roll'] = r['left_wrist_roll']
+                self.latest_data['timestamp'] = time.time()
 
             except Exception as e:
                 print("Update Error!")
@@ -63,8 +63,8 @@ class VisionProBridge:
 
     def get_hand_relative_to_head(self):
         with self.data_lock:
-            head_pose = self.lastest_data['head_pose'].copy()
-            wrist_pose = self.lastest_data['wrist_pose'].copy()
+            head_pose = self.latest_data['head_pose'].copy()
+            wrist_pose = self.latest_data['wrist_pose'].copy()
 
         head_inv = np.linalg.inv(head_pose)
         relative_pose = head_inv @ wrist_pose
@@ -77,7 +77,7 @@ class VisionProBridge:
     def get_pinch_state(self, threshold: float = 0.02):
 
         with self.data_lock:
-            pinch_distance = self.lastest_data['pinch_distance']
+            pinch_distance = self.latest_data['pinch_distance']
 
         return pinch_distance < threshold
     
@@ -88,7 +88,7 @@ class VisionProBridge:
             pinch_distance: 捏合距离 (m)，范围通常 [0.0, 0.1]
         """
         with self.data_lock:
-            pinch_distance = self.lastest_data['pinch_distance']
+            pinch_distance = self.latest_data['pinch_distance']
 
         return pinch_distance
 
