@@ -69,7 +69,7 @@ def main():
     parser.add_argument('--save_dir', type=str, default='./demos', help='保存demo的目录')
     parser.add_argument('--num_demos', type=int, default=10, help='需要收集的demo数量')
     parser.add_argument('--task', type=str, default='reaching', help='任务名称')
-    parser.add_argument('--config', type=str, default='kinova_env/config/kinova_config.yaml',
+    parser.add_argument('--config', type=str, default='config/kinova_config.yaml',
                         help='Kinova配置文件路径')
     parser.add_argument('--vp_ip', type=str, default='192.168.1.125', help='VisionPro IP地址')
     parser.add_argument('--use_right_hand', action='store_true', default=True, help='使用右手')
