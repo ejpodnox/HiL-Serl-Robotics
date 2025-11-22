@@ -43,7 +43,9 @@
 - ✅ Gripper: pinch distance → position
 
 #### 2.3 测试脚本
-- ✅ `test_demo_format.py` - 验证数据格式
+- ✅ `tests/unit/test_demo_format.py` - 验证数据格式
+- ✅ `tests/run_all_tests.sh` - 统一测试运行器
+- ✅ `tests/utils/save_demo_utils.py` - pkl/hdf5转换工具
 
 ---
 
@@ -139,7 +141,7 @@ python record_kinova_demos.py \
 ### 4. 验证数据格式
 
 ```bash
-python test_demo_format.py --demo_path demos/reaching/demo_000.pkl
+python tests/unit/test_demo_format.py --demo_path demos/reaching/demo_000.pkl
 ```
 
 应该看到：
@@ -325,8 +327,25 @@ kinova_rl_env/
 │   └── config_loader.py       # 配置加载器
 ├── config/
 │   └── kinova_config.yaml     # ✅ 配置文件（已添加任务参数）
-├── record_kinova_demos.py     # ✅ 数据收集脚本（新建）
-├── test_demo_format.py        # ✅ 测试脚本（新建）
+├── tests/                      # ✅ 统一测试目录（已重组）
+│   ├── hardware/               # 硬件测试
+│   │   ├── test_ros2_connection.py
+│   │   ├── test_velocity_control.py
+│   │   └── test_robot_connection.py
+│   ├── unit/                   # 单元测试
+│   │   └── test_demo_format.py
+│   ├── visionpro/              # VisionPro测试
+│   │   ├── test_visionpro_bridge.py
+│   │   ├── test_calibration.py
+│   │   └── test_teleop.py
+│   ├── integration/            # 集成测试
+│   │   └── test_teleop_all.py
+│   ├── utils/                  # 测试工具
+│   │   └── save_demo_utils.py  # pkl/hdf5转换工具
+│   ├── run_all_tests.sh        # 统一测试运行器
+│   └── README.md               # 测试文档
+├── record_kinova_demos.py      # ✅ 数据收集脚本
+├── run_tests.sh                # 兼容性脚本（重定向到tests/）
 └── README_HIL_SERL_INTEGRATION.md  # 本文档
 
 vision_pro_control/             # VisionPro遥操作（已有）
