@@ -10,8 +10,8 @@ from gymnasium import spaces
 import time
 import cv2
 
-from kinova_interface import KinovaInterface
-from config_loader import KinovaConfig
+from .kinova_interface import KinovaInterface
+from .config_loader import KinovaConfig
 from std_msgs.msg import Float64
 
 class KinovaEnv(gym.Env):
