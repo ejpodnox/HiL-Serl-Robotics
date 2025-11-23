@@ -11,16 +11,13 @@
     python record_teleop_demos.py --save_dir ./teleop_demos --num_demos 5
 """
 
+import argparse
 import rclpy
 import numpy as np
 import pickle
 import time
 from pathlib import Path
-import sys
 import yaml
-
-# 添加路径
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from vision_pro_control.core.visionpro_bridge import VisionProBridge
 from vision_pro_control.core.coordinate_mapper import CoordinateMapper
@@ -217,8 +214,6 @@ def save_trajectory(trajectory, save_path, metadata=None):
 
 
 def main():
-    import argparse
-
     parser = argparse.ArgumentParser(description='VisionPro 遥操作数据采集')
     parser.add_argument('--save_dir', type=str, default='./teleop_demos',
                         help='保存目录')

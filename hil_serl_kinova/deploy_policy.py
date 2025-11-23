@@ -26,11 +26,7 @@ import torch
 import numpy as np
 import time
 from pathlib import Path
-import sys
 import rclpy
-
-# 添加路径
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from kinova_rl_env.kinova_env.kinova_env import KinovaEnv
 from kinova_rl_env.kinova_env.config_loader import KinovaConfig
@@ -39,7 +35,7 @@ from vision_pro_control.core.coordinate_mapper import CoordinateMapper
 from vision_pro_control.utils.keyboard_monitor import KeyboardMonitor
 
 # 导入训练脚本中的策略网络
-from train_bc_kinova import BCPolicy
+from hil_serl_kinova.train_bc_kinova import BCPolicy
 
 
 class PolicyDeployer:

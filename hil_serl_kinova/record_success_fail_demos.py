@@ -18,12 +18,8 @@ import argparse
 import pickle
 import numpy as np
 from pathlib import Path
-import sys
 import rclpy
 import time
-
-# 添加路径
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from kinova_rl_env.kinova_env.kinova_env import KinovaEnv
 from kinova_rl_env.kinova_env.config_loader import KinovaConfig

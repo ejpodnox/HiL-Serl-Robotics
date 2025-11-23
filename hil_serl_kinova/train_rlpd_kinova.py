@@ -30,10 +30,6 @@ from pathlib import Path
 from collections import deque
 import pickle
 import time
-import sys
-
-# 添加路径
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from kinova_rl_env.kinova_env.kinova_env import KinovaEnv
 from kinova_rl_env.kinova_env.config_loader import KinovaConfig

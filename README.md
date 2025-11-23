@@ -297,9 +297,15 @@ config.bc_config.batch_size = 128
 
 ## 📚 文档
 
-- [快速开始指南](QUICKSTART.md) - 新手入门
-- [实现总结](IMPLEMENTATION_SUMMARY.md) - 技术细节
-- [HIL-SERL 集成](kinova_rl_env/README_HIL_SERL_INTEGRATION.md) - 集成说明
+完整文档请访问 [docs/](docs/) 目录：
+
+- **[快速开始](docs/QUICKSTART.md)** - 5分钟快速上手
+- **[安装指南](docs/INSTALLATION.md)** - 详细安装步骤
+- **[配置说明](docs/CONFIGURATION.md)** - 配置文件详解
+- **[API 文档](docs/API.md)** - 完整 API 参考
+- **[实现总结](docs/IMPLEMENTATION_SUMMARY.md)** - 技术架构详解
+
+> 📖 [查看完整文档索引](docs/README.md)
 
 ## 🎯 路线图
 

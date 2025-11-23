@@ -10,9 +10,6 @@ import time
 from pathlib import Path
 
 # 导入自定义模块
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
 from vision_pro_control.core.visionpro_bridge import VisionProBridge
 from vision_pro_control.core.calibrator import WorkspaceCalibrator
 from vision_pro_control.utils.keyboard_monitor import KeyboardMonitor
