@@ -16,6 +16,7 @@
 - **[硬件测试指南 (HARDWARE_TESTING_GUIDE.md)](HARDWARE_TESTING_GUIDE.md)** - 分步测试所有硬件连接
 - **[USB 相机配置 (USB_CAMERA_SETUP.md)](USB_CAMERA_SETUP.md)** - USB 相机设置和使用
 - **[任务设计指南 (TASKS.md)](TASKS.md)** - 如何设计和实现新任务
+- **[完整训练流程 (TRAINING_WORKFLOW.md)](TRAINING_WORKFLOW.md)** - 从任务定义到模型部署的完整步骤
 - **[下一步行动 (NEXT_STEPS.md)](NEXT_STEPS.md)** - 完成配置后的工作流程
 
 ### 技术文档
