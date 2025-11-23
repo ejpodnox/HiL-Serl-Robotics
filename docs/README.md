@@ -13,10 +13,15 @@
 
 - **[配置说明 (CONFIGURATION.md)](CONFIGURATION.md)** - 所有配置文件的详细说明
 - **[API 文档 (API.md)](API.md)** - 完整的 API 参考和示例代码
+- **[硬件测试指南 (HARDWARE_TESTING_GUIDE.md)](HARDWARE_TESTING_GUIDE.md)** - 分步测试所有硬件连接
+- **[USB 相机配置 (USB_CAMERA_SETUP.md)](USB_CAMERA_SETUP.md)** - USB 相机设置和使用
+- **[任务设计指南 (TASKS.md)](TASKS.md)** - 如何设计和实现新任务
+- **[下一步行动 (NEXT_STEPS.md)](NEXT_STEPS.md)** - 完成配置后的工作流程
 
 ### 技术文档
 
 - **[实现总结 (IMPLEMENTATION_SUMMARY.md)](IMPLEMENTATION_SUMMARY.md)** - 系统架构和技术细节
+- **[相机对比 (CAMERA_COMPARISON.md)](CAMERA_COMPARISON.md)** - RealSense vs USB 相机对比
 
 ### 其他资源
 
@@ -34,8 +39,20 @@
 #### 安装和配置环境
 → 阅读 [安装指南](INSTALLATION.md)
 
+#### 测试硬件连接
+→ 阅读 [硬件测试指南](HARDWARE_TESTING_GUIDE.md)
+
+#### 配置 USB 相机
+→ 阅读 [USB 相机配置](USB_CAMERA_SETUP.md)
+
 #### 修改配置参数
 → 阅读 [配置说明](CONFIGURATION.md)
+
+#### 设计新任务
+→ 阅读 [任务设计指南](TASKS.md)
+
+#### 了解下一步工作
+→ 阅读 [下一步行动](NEXT_STEPS.md)
 
 #### 在代码中使用 API
 → 阅读 [API 文档](API.md)
@@ -55,9 +72,14 @@ docs/
 ├── README.md                    # 本文档（文档索引）
 ├── QUICKSTART.md               # 快速开始指南
 ├── INSTALLATION.md             # 安装指南
+├── HARDWARE_TESTING_GUIDE.md   # 硬件测试指南
+├── USB_CAMERA_SETUP.md         # USB 相机配置
 ├── CONFIGURATION.md            # 配置说明
+├── TASKS.md                    # 任务设计指南
+├── NEXT_STEPS.md               # 下一步行动
 ├── API.md                      # API 文档
-└── IMPLEMENTATION_SUMMARY.md   # 实现总结
+├── IMPLEMENTATION_SUMMARY.md   # 实现总结
+└── CAMERA_COMPARISON.md        # 相机对比
 ```
 
 ---
@@ -67,22 +89,26 @@ docs/
 ### 路径 1: 快速实践（推荐新手）
 
 1. [快速开始](QUICKSTART.md) - 运行第一个演示
-2. [配置说明](CONFIGURATION.md) - 理解配置参数
-3. [API 文档](API.md) - 学习编程接口
+2. [硬件测试指南](HARDWARE_TESTING_GUIDE.md) - 测试所有硬件连接
+3. [下一步行动](NEXT_STEPS.md) - 开始数据收集和训练
+4. [配置说明](CONFIGURATION.md) - 理解配置参数
+5. [API 文档](API.md) - 学习编程接口
 
 ### 路径 2: 深入理解（推荐开发者）
 
 1. [安装指南](INSTALLATION.md) - 理解系统依赖
 2. [实现总结](IMPLEMENTATION_SUMMARY.md) - 了解架构设计
-3. [API 文档](API.md) - 掌握编程接口
-4. [配置说明](CONFIGURATION.md) - 优化配置参数
+3. [任务设计指南](TASKS.md) - 学习如何设计新任务
+4. [API 文档](API.md) - 掌握编程接口
+5. [配置说明](CONFIGURATION.md) - 优化配置参数
 
-### 路径 3: 部署上线（推荐生产环境）
+### 路径 3: 硬件部署（推荐实际使用）
 
 1. [安装指南](INSTALLATION.md) - 正确安装所有依赖
-2. [配置说明](CONFIGURATION.md) - 生产环境配置
-3. [API 文档](API.md) - 集成到现有系统
-4. [快速开始](QUICKSTART.md) - 验证部署
+2. [USB 相机配置](USB_CAMERA_SETUP.md) - 配置 USB 相机
+3. [硬件测试指南](HARDWARE_TESTING_GUIDE.md) - 验证所有硬件
+4. [配置说明](CONFIGURATION.md) - 调整配置参数
+5. [下一步行动](NEXT_STEPS.md) - 完整工作流程
 
 ---
 
