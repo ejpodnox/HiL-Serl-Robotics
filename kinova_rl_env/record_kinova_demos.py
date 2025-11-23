@@ -13,19 +13,17 @@
     python record_kinova_demos.py --save_dir ./demos --num_demos 10 --task reaching
 """
 
+import argparse
 import numpy as np
 import pickle
 import time
 from pathlib import Path
-import sys
 
 # Kinova RL环境
-sys.path.insert(0, str(Path(__file__).parent))
-from kinova_env.kinova_env import KinovaEnv
-from kinova_env.config_loader import KinovaConfig
+from kinova_rl_env.kinova_env.kinova_env import KinovaEnv
+from kinova_rl_env.kinova_env.config_loader import KinovaConfig
 
 # VisionPro遥操作
-sys.path.insert(0, str(Path(__file__).parent.parent))
 from vision_pro_control.core.visionpro_bridge import VisionProBridge
 from vision_pro_control.core.coordinate_mapper import CoordinateMapper
 from vision_pro_control.utils.keyboard_monitor import KeyboardMonitor
@@ -63,13 +61,11 @@ def twist_to_action(twist, dt, gripper_position):
 
 
 def main():
-    import argparse
-
     parser = argparse.ArgumentParser(description='收集Kinova演示数据（VisionPro遥操作）')
     parser.add_argument('--save_dir', type=str, default='./demos', help='保存demo的目录')
     parser.add_argument('--num_demos', type=int, default=10, help='需要收集的demo数量')
     parser.add_argument('--task', type=str, default='reaching', help='任务名称')
-    parser.add_argument('--config', type=str, default='kinova_env/config/kinova_config.yaml',
+    parser.add_argument('--config', type=str, default='config/kinova_config.yaml',
                         help='Kinova配置文件路径')
     parser.add_argument('--vp_ip', type=str, default='192.168.1.125', help='VisionPro IP地址')
     parser.add_argument('--use_right_hand', action='store_true', default=True, help='使用右手')
