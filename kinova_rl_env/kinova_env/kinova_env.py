@@ -12,12 +12,13 @@ import cv2
 
 from .kinova_interface import KinovaInterface
 from .config_loader import KinovaConfig
+from .camera_interface import WebCamera, RealSenseCamera, DummyCamera
 from std_msgs.msg import Float64
 
 class KinovaEnv(gym.Env):
     def __init__(self, config_path=None, config=None):
         super().__init__()
-        
+
         # 加载配置
         if config:
             self.config = config
@@ -25,15 +26,19 @@ class KinovaEnv(gym.Env):
             self.config = KinovaConfig.from_yaml(config_path)
         else:
             self.config = KinovaConfig.get_default()
-        
+
         # 从config读取参数
         self.control_frequency = self.config.control.frequency
         self.control_dt = self.config.control.dt
         self.action_scale = self.config.control.action_scale
         self.max_episode_steps = self.config.control.max_episode_steps
-        
+
         # 机器人接口
         self.interface = KinovaInterface(node_name=self.config.ros2.node_name)
+
+        # 相机接口
+        self.cameras = {}
+        self._setup_cameras()
         
         # 修改为HIL-SERL标准格式：嵌套字典
         self.observation_space = spaces.Dict({
@@ -77,7 +82,58 @@ class KinovaEnv(gym.Env):
         # 状态变量
         self.current_step = 0
         self.episode_return = 0.0
-    
+
+    def _setup_cameras(self):
+        """设置相机（根据配置选择后端）"""
+        if not self.config.camera.enabled:
+            print("⚠️  相机未启用，使用虚拟图像")
+            return
+
+        backend = self.config.camera.backend
+        print(f"📷 初始化相机（后端: {backend}）")
+
+        try:
+            if backend == "webcam":
+                # USB 相机
+                for cam_name, cam_cfg in self.config.camera.webcam_cameras.items():
+                    camera = WebCamera(
+                        camera_id=cam_cfg['device_id'],
+                        target_size=tuple(cam_cfg['image_size'])
+                    )
+                    camera.start()
+                    self.cameras[cam_name] = camera
+                    print(f"  ✓ {cam_name}: USB 相机 (ID={cam_cfg['device_id']})")
+
+            elif backend == "realsense":
+                # RealSense 相机
+                for cam_name, cam_cfg in self.config.camera.realsense_cameras.items():
+                    camera = RealSenseCamera(
+                        camera_name=cam_name,
+                        topic=cam_cfg.get('topic'),
+                        serial_number=cam_cfg.get('serial_number'),
+                        target_size=tuple(cam_cfg['image_size'])
+                    )
+                    camera.start()
+                    self.cameras[cam_name] = camera
+                    print(f"  ✓ {cam_name}: RealSense 相机")
+
+            elif backend == "dummy":
+                # 虚拟相机（测试用）
+                for cam_name, cam_cfg in self.config.camera.dummy_cameras.items():
+                    camera = DummyCamera(
+                        image_size=tuple(cam_cfg['image_size'])
+                    )
+                    camera.start()
+                    self.cameras[cam_name] = camera
+                    print(f"  ✓ {cam_name}: 虚拟相机")
+
+            else:
+                print(f"  ✗ 未知的相机后端: {backend}")
+
+        except Exception as e:
+            print(f"  ✗ 相机初始化失败: {e}")
+            print(f"  ⚠️  将使用虚拟图像")
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         if self.interface.node is None:
@@ -228,19 +284,21 @@ class KinovaEnv(gym.Env):
             "gripper_pose": gripper_pose
         }
 
-        # 获取图像
-        image = self.interface.get_image()
-        if image is None:
-            # 如果获取失败，返回黑图像
-            image = np.zeros((128, 128, 3), dtype=np.uint8)
+        # 获取图像（从相机或使用虚拟图像）
+        images_dict = {}
+        if self.cameras:
+            # 从实际相机获取图像
+            for cam_name, camera in self.cameras.items():
+                try:
+                    image = camera.get_image()
+                    images_dict[cam_name] = image
+                except Exception as e:
+                    # 如果获取失败，使用黑图像
+                    print(f"⚠️  相机 {cam_name} 获取图像失败: {e}")
+                    images_dict[cam_name] = np.zeros((128, 128, 3), dtype=np.uint8)
         else:
-            # resize到HIL-SERL标准尺寸：128x128
-            image = cv2.resize(image, (128, 128))
-
-        # 构建images字典（可以有多个相机）
-        images_dict = {
-            "wrist_1": image
-        }
+            # 使用虚拟图像（相机未启用）
+            images_dict["wrist_1"] = np.zeros((128, 128, 3), dtype=np.uint8)
 
         # 返回嵌套字典
         return {
@@ -337,8 +395,20 @@ class KinovaEnv(gym.Env):
         return distance
     
     def close(self):
+        """关闭环境，释放资源"""
+        # 停止机械臂
         self.interface.send_joint_velocities([0.0] * 7)
         self.interface.disconnect()
+
+        # 关闭所有相机
+        for cam_name, camera in self.cameras.items():
+            try:
+                camera.stop()
+                print(f"✓ 相机 {cam_name} 已关闭")
+            except Exception as e:
+                print(f"⚠️  关闭相机 {cam_name} 时出错: {e}")
+
+        self.cameras.clear()
 
 
 # ============ 测试代码 ============

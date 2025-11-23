@@ -107,20 +107,40 @@ reward:
 
 # ============ Camera Configuration ============
 camera:
-  enabled: false  # Phase 3启用
-  
-  # RealSense相机
+  enabled: true  # 启用相机
+  backend: "webcam"  # 相机后端: "webcam" (USB相机), "realsense" (RealSense), "dummy" (测试)
+
+  # USB 相机配置 (backend: "webcam")
+  webcam_cameras:
+    wrist_1:
+      device_id: 0  # USB 设备 ID (/dev/video0)
+      image_size: [128, 128]  # (height, width)
+    # 如果有第二个 USB 相机，取消注释：
+    # wrist_2:
+    #   device_id: 1  # /dev/video1
+    #   image_size: [128, 128]
+
+  # RealSense 相机配置 (backend: "realsense")
   realsense_cameras:
     wrist_1:
-      serial_number: "123456789"  # 替换为实际序列号
+      serial_number: null  # 留空自动检测，或填写序列号
       topic: "/camera/wrist_1/color/image_raw"
+      image_size: [128, 128]
     # wrist_2:
-    #   serial_number: "987654321"
+    #   serial_number: null
     #   topic: "/camera/wrist_2/color/image_raw"
-  
-  # 图像处理
-  image_size: [224, 224]  # (height, width)
+    #   image_size: [128, 128]
+
+  # 虚拟相机配置 (backend: "dummy")
+  dummy_cameras:
+    wrist_1:
+      image_size: [128, 128]
+
+  # 图像处理参数
+  image_size: [128, 128]  # 默认图像尺寸 (height, width)
   crop: null  # 如果需要裁剪: [y_min, y_max, x_min, x_max]
+  color_mode: "RGB"  # "RGB" or "BGR"
+  normalize: false  # 是否归一化到 [0, 1]
 
 # ============ Logging & Debug ============
 logging:
