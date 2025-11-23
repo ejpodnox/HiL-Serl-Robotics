@@ -21,6 +21,15 @@ VisionPro → 遥操作数据采集 → 演示数据
             策略部署 → 评估 → RLPD 在线学习
 ```
 
+## 🧪 测试
+
+```bash
+# 运行所有测试（无需硬件）
+python tests/run_all_tests.py --skip-hardware
+```
+
+📖 详细测试文档：[TESTING.md](TESTING.md) | [tests/README.md](tests/README.md)
+
 ## 🚀 快速开始
 
 ### 1. 安装依赖
