@@ -61,13 +61,18 @@ def twist_to_action(twist, dt, gripper_position):
 
 
 def main():
+    # 尝试从配置文件读取默认 VisionPro IP
+    default_vp_ip = '192.168.1.125'
+    # 注意：kinova_config.yaml 中可能没有 visionpro IP，所以这里使用默认值
+
     parser = argparse.ArgumentParser(description='收集Kinova演示数据（VisionPro遥操作）')
     parser.add_argument('--save_dir', type=str, default='./demos', help='保存demo的目录')
     parser.add_argument('--num_demos', type=int, default=10, help='需要收集的demo数量')
     parser.add_argument('--task', type=str, default='reaching', help='任务名称')
     parser.add_argument('--config', type=str, default='config/kinova_config.yaml',
                         help='Kinova配置文件路径')
-    parser.add_argument('--vp_ip', type=str, default='192.168.1.125', help='VisionPro IP地址')
+    parser.add_argument('--vp_ip', type=str, default=default_vp_ip,
+                        help=f'VisionPro IP地址 (默认: {default_vp_ip})')
     parser.add_argument('--use_right_hand', action='store_true', default=True, help='使用右手')
 
     args = parser.parse_args()

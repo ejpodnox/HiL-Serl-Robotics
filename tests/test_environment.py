@@ -79,10 +79,19 @@ def test_env_creation_dummy():
         from kinova_rl_env import KinovaEnv, KinovaConfig
         from pathlib import Path
 
+        # 读取默认 robot IP
+        default_robot_ip = '192.168.8.10'
+        try:
+            from kinova_rl_env.kinova_env.config_loader import KinovaConfig
+            config = KinovaConfig.from_yaml('kinova_rl_env/config/kinova_config.yaml')
+            default_robot_ip = config.robot.ip
+        except Exception:
+            pass
+
         # 创建虚拟配置
         config_dict = {
             'robot': {
-                'ip': '192.168.8.10',
+                'ip': default_robot_ip,
                 'namespace': '',
                 'dof': 7,
                 'control_mode': 'twist',

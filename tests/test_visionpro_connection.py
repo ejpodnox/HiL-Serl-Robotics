@@ -103,9 +103,13 @@ def test_visionpro_dummy():
 
 
 def main():
+    # 尝试从配置文件读取默认 VisionPro IP（如果配置了）
+    default_vp_ip = '192.168.1.125'
+    # 注意：kinova_config.yaml 中可能没有 visionpro IP，所以这里使用默认值
+
     parser = argparse.ArgumentParser(description='VisionPro 连接测试')
-    parser.add_argument('--vp_ip', type=str, default='192.168.1.125',
-                        help='VisionPro IP 地址')
+    parser.add_argument('--vp_ip', type=str, default=default_vp_ip,
+                        help=f'VisionPro IP 地址 (默认: {default_vp_ip})')
     parser.add_argument('--timeout', type=float, default=5.0,
                         help='连接超时时间（秒）')
     parser.add_argument('--skip-connection', action='store_true',

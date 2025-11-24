@@ -174,6 +174,17 @@ class TeleopDataCollector:
 
 
 def main():
+    # 尝试从配置文件读取默认 VisionPro IP
+    default_vp_ip = '192.168.1.125'
+    try:
+        from kinova_rl_env.kinova_env.config_loader import KinovaConfig
+        # 注意：这里先用默认路径尝试读取，如果失败就用硬编码
+        config = KinovaConfig.from_yaml('kinova_rl_env/config/kinova_config.yaml')
+        # VisionPro IP 可以从配置中读取（如果配置了 visionpro 部分）
+        # 这里暂时保持硬编码，因为 kinova_config.yaml 中可能没有 visionpro IP
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(description='采集VisionPro遥操作演示数据')
 
     parser.add_argument('--config', type=str, required=True,
@@ -183,8 +194,8 @@ def main():
     parser.add_argument('--output-dir', type=str, default=None,
                         help='输出目录（默认从配置读取）')
 
-    parser.add_argument('--vp-ip', type=str, default='192.168.1.125',
-                        help='VisionPro IP地址')
+    parser.add_argument('--vp-ip', type=str, default=default_vp_ip,
+                        help=f'VisionPro IP地址 (默认: {default_vp_ip})')
     parser.add_argument('--tcp-scale', type=float, default=1.0,
                         help='TCP位置缩放因子')
     parser.add_argument('--gripper-threshold', type=float, default=0.5,
