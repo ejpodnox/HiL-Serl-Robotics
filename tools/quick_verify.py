@@ -95,7 +95,7 @@ class QuickVerify:
             self.results['kinova'] = False
             return False
 
-    def verify_camera(self, camera_id: int = 0):
+    def verify_camera(self, camera_id: int = 9):
         """验证 USB 相机"""
         print("\n" + "=" * 60)
         print("【3/4】USB 相机验证")
