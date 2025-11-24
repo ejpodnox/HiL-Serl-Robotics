@@ -123,9 +123,18 @@ def test_kinova_dummy():
 
 
 def main():
+    # 尝试从配置文件读取默认 robot IP
+    default_robot_ip = '192.168.8.10'
+    try:
+        from kinova_rl_env.kinova_env.config_loader import KinovaConfig
+        config = KinovaConfig.from_yaml('kinova_rl_env/config/kinova_config.yaml')
+        default_robot_ip = config.robot.ip
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(description='Kinova 机械臂连接测试')
-    parser.add_argument('--robot_ip', type=str, default='192.168.8.10',
-                        help='Kinova 机械臂 IP 地址')
+    parser.add_argument('--robot_ip', type=str, default=default_robot_ip,
+                        help=f'Kinova 机械臂 IP 地址 (默认从配置: {default_robot_ip})')
     parser.add_argument('--timeout', type=float, default=5.0,
                         help='连接超时时间（秒）')
     parser.add_argument('--skip-connection', action='store_true',

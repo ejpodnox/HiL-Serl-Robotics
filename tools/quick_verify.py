@@ -191,13 +191,35 @@ class QuickVerify:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='快速验证硬件连接')
-    parser.add_argument('--vp-ip', type=str, default='192.168.1.125',
-                        help='VisionPro IP 地址')
-    parser.add_argument('--robot-ip', type=str, default='192.168.8.10',
-                        help='Kinova 机械臂 IP')
-    parser.add_argument('--camera-id', type=int, default=0,
-                        help='USB 相机 ID')
+    # 尝试从配置文件读取默认值
+    default_config_path = 'kinova_rl_env/config/kinova_config.yaml'
+    default_vp_ip = '192.168.1.125'
+    default_robot_ip = '192.168.8.10'
+    default_camera_id = 0
+
+    try:
+        from kinova_rl_env.kinova_env.config_loader import KinovaConfig
+        config = KinovaConfig.from_yaml(default_config_path)
+        default_robot_ip = config.robot.ip
+        # 读取第一个 webcam 相机的 device_id
+        if config.camera.backend == 'webcam' and config.camera.webcam_cameras:
+            first_camera = list(config.camera.webcam_cameras.values())[0]
+            default_camera_id = first_camera['device_id']
+    except Exception:
+        # 配置读取失败，使用硬编码默认值
+        pass
+
+    parser = argparse.ArgumentParser(
+        description='快速验证硬件连接\n\n'
+                    '默认值从 kinova_rl_env/config/kinova_config.yaml 读取',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument('--vp-ip', type=str, default=default_vp_ip,
+                        help=f'VisionPro IP 地址 (默认: {default_vp_ip})')
+    parser.add_argument('--robot-ip', type=str, default=default_robot_ip,
+                        help=f'Kinova 机械臂 IP (默认从配置: {default_robot_ip})')
+    parser.add_argument('--camera-id', type=int, default=default_camera_id,
+                        help=f'USB 相机 ID (默认从配置: {default_camera_id})')
     parser.add_argument('--skip-vp', action='store_true',
                         help='跳过 VisionPro 验证')
     parser.add_argument('--skip-robot', action='store_true',

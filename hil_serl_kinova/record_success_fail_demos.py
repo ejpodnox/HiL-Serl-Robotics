@@ -47,6 +47,18 @@ def twist_to_action(twist, dt, gripper_position):
 
 
 def main():
+    # 尝试从配置文件读取默认 VisionPro IP
+    default_vp_ip = '192.168.1.125'
+    default_config_path = 'kinova_rl_env/config/kinova_config.yaml'
+
+    try:
+        from kinova_rl_env.kinova_env.config_loader import KinovaConfig
+        config = KinovaConfig.from_yaml(default_config_path)
+        # VisionPro IP 可以从配置中读取（如果配置了 visionpro 部分）
+        # 这里暂时保持硬编码，因为 kinova_config.yaml 中可能没有 visionpro IP
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(description='收集成功/失败标签数据')
     parser.add_argument('--save_dir', type=str, default='./demos/labeled',
                         help='保存目录')
@@ -55,10 +67,10 @@ def main():
     parser.add_argument('--num_fail', type=int, default=10,
                         help='需要收集的失败演示数量')
     parser.add_argument('--config', type=str,
-                        default='kinova_rl_env/config/kinova_config.yaml',
+                        default=default_config_path,
                         help='Kinova配置文件路径')
-    parser.add_argument('--vp_ip', type=str, default='192.168.1.125',
-                        help='VisionPro IP地址')
+    parser.add_argument('--vp_ip', type=str, default=default_vp_ip,
+                        help=f'VisionPro IP地址 (默认: {default_vp_ip})')
     parser.add_argument('--auto_label', action='store_true',
                         help='自动标记（基于 reward）')
 

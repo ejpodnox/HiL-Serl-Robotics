@@ -202,6 +202,24 @@ class LiveMonitor:
 
 
 def main():
+    # 尝试从配置文件读取默认值
+    default_config_path = 'kinova_rl_env/config/kinova_config.yaml'
+    default_vp_ip = '192.168.1.125'
+    default_robot_ip = '192.168.8.10'
+    default_camera_id = 0
+
+    try:
+        from kinova_rl_env.kinova_env.config_loader import KinovaConfig
+        config = KinovaConfig.from_yaml(default_config_path)
+        default_robot_ip = config.robot.ip
+        # 读取第一个 webcam 相机的 device_id
+        if config.camera.backend == 'webcam' and config.camera.webcam_cameras:
+            first_camera = list(config.camera.webcam_cameras.values())[0]
+            default_camera_id = first_camera['device_id']
+    except Exception:
+        # 配置读取失败，使用硬编码默认值
+        pass
+
     parser = argparse.ArgumentParser(description='实时监控系统组件')
 
     parser.add_argument('--vp-ip', type=str, default=None,
@@ -221,11 +239,11 @@ def main():
 
     args = parser.parse_args()
 
-    # 如果使用 --all，设置默认值
+    # 如果使用 --all，设置默认值（从配置文件读取）
     if args.all:
-        args.vp_ip = args.vp_ip or "192.168.1.125"
-        args.robot_ip = args.robot_ip or "192.168.8.10"
-        args.camera_id = args.camera_id if args.camera_id is not None else 0
+        args.vp_ip = args.vp_ip or default_vp_ip
+        args.robot_ip = args.robot_ip or default_robot_ip
+        args.camera_id = args.camera_id if args.camera_id is not None else default_camera_id
 
     # 检查至少有一个组件
     if args.vp_ip is None and args.robot_ip is None and args.camera_id is None:
