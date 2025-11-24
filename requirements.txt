@@ -1,0 +1,45 @@
+# Kinova HIL-SERL 完整依赖列表
+# 使用方法：pip install -r requirements.txt
+
+# ============ Core Dependencies ============
+numpy>=1.20.0
+scipy>=1.7.0
+pyyaml>=5.4.0
+ml-collections>=0.1.0
+
+# ============ Deep Learning ============
+torch>=2.0.0
+torchvision>=0.15.0
+
+# ============ Reinforcement Learning ============
+gymnasium>=0.28.0
+
+# ============ Computer Vision ============
+opencv-python>=4.5.0
+# pyrealsense2>=2.50.0  # 如果使用 RealSense 相机，取消注释
+
+# ============ Visualization ============
+matplotlib>=3.3.0
+seaborn>=0.11.0
+tensorboard>=2.8.0
+
+# ============ Data Processing ============
+h5py>=3.0.0
+pillow>=8.0.0
+
+# ============ Utilities ============
+tqdm>=4.60.0
+tabulate>=0.8.9
+
+# ============ Development (Optional) ============
+# pytest>=6.0.0
+# pytest-cov>=2.12.0
+# black>=21.0
+# flake8>=3.9.0
+# isort>=5.9.0
+# mypy>=0.910
+
+# ============ VisionPro (如果有硬件) ============
+# 注意：VisionProTeleop 需要手动安装
+# 如果你没有 VisionPro 硬件，可以跳过这个包
+# 安装方法请参考: docs/INSTALLATION.md
