@@ -2,6 +2,17 @@
 
 从任务定义到模型部署的完整步骤指南。
 
+**⚠️ 重要：所有命令都需要在项目根目录 `kinova-hil-serl/` 下运行！**
+
+```bash
+# 首先进入项目根目录
+cd ~/Documents/kinova-hil-serl  # 根据你的实际路径调整
+
+# 确认当前目录正确
+pwd
+# 应该输出类似：/home/xxx/Documents/kinova-hil-serl
+```
+
 ---
 
 ## 📋 目录
