@@ -51,7 +51,20 @@ class PolicyEvaluator:
 
             # 获取动作
             with torch.no_grad():
-                action = self.policy(policy_input)
+                # 根据策略类型调用
+                if hasattr(self.policy, 'deterministic_action'):
+                    # SAC Actor
+                    action = self.policy.deterministic_action(
+                        policy_input['state'],
+                        policy_input.get('images')
+                    )
+                else:
+                    # BC Policy
+                    action = self.policy(
+                        policy_input['state'],
+                        policy_input.get('images')
+                    )
+
                 action = action.cpu().numpy().flatten()
 
             # 执行动作
@@ -169,29 +182,67 @@ class PolicyEvaluator:
         pass
 
 
-def load_policy(checkpoint_path, device='cuda'):
+def load_policy(checkpoint_path, state_dim=None, action_dim=None, device='cuda'):
     """加载训练好的策略"""
 
     print(f"加载模型: {checkpoint_path}")
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
-    # 根据你的实际模型架构调整
-    # 这里假设checkpoint包含 'policy_state_dict'
-    if 'policy_state_dict' in checkpoint:
-        state_dict = checkpoint['policy_state_dict']
+    # 提取配置信息
+    if 'config' in checkpoint:
+        config = checkpoint['config']
+        state_dim = config.get('state_dim', state_dim)
+        action_dim = config.get('action_dim', action_dim)
+
+    # 确定模型类型（BC 或 RLPD）
+    if 'model_type' in checkpoint:
+        model_type = checkpoint['model_type']
     else:
-        state_dict = checkpoint
+        # 根据state_dict键名推断
+        if 'policy_state_dict' in checkpoint:
+            model_type = 'bc'
+        elif 'actor_state_dict' in checkpoint:
+            model_type = 'sac'
+        else:
+            model_type = 'bc'  # 默认
 
-    # TODO: 创建你的策略网络
-    # from your_model import YourPolicyNetwork
-    # policy = YourPolicyNetwork(...)
-    # policy.load_state_dict(state_dict)
+    # 创建策略网络
+    from .networks import BCPolicy, SACActor
 
-    # 占位符
-    policy = None
-    print("⚠️  警告: 需要实现实际的策略网络加载")
+    if model_type == 'bc' or model_type == 'BC':
+        policy = BCPolicy(
+            state_dim=state_dim or 14,
+            action_dim=action_dim or 7,
+            image_size=(128, 128),
+            use_image=True
+        )
 
+        if 'policy_state_dict' in checkpoint:
+            policy.load_state_dict(checkpoint['policy_state_dict'])
+        else:
+            policy.load_state_dict(checkpoint)
+
+    elif model_type == 'sac' or model_type == 'SAC':
+        policy = SACActor(
+            state_dim=state_dim or 14,
+            action_dim=action_dim or 7,
+            image_size=(128, 128),
+            use_image=True
+        )
+
+        if 'actor_state_dict' in checkpoint:
+            policy.load_state_dict(checkpoint['actor_state_dict'])
+        else:
+            policy.load_state_dict(checkpoint)
+
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+
+    policy.to(device)
+    policy.eval()
+
+    print(f"✓ 加载 {model_type.upper()} 模型成功")
     return policy
 
 

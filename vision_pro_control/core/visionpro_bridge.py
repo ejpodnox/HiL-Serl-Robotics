@@ -1,5 +1,5 @@
 import numpy as np
-from VisionProTeleop.avp_stream import VisionProStreamer
+from avp_stream import VisionProStreamer
 import threading
 import time
 
