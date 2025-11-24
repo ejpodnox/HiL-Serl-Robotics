@@ -3,7 +3,7 @@
 # ============ Robot Configuration ============
 robot:
   # 机器人基本参数
-  ip: "192.168.1.10"
+  ip: "192.168.8.10"
   dof: 8
   gripper_dof: 1
   
@@ -111,14 +111,15 @@ camera:
   backend: "webcam"  # 相机后端: "webcam" (USB相机), "realsense" (RealSense), "dummy" (测试)
 
   # USB 相机配置 (backend: "webcam")
+  # Search your camera by: v4l2-ctl --list-devices
+  # python3 -c "import cv2; cap = cv2.VideoCapture(0); print('RealSense video0:', cap.isOpened()); cap.release()"
   webcam_cameras:
     wrist_1:
-      device_id: 0  # USB 设备 ID (/dev/video0)
+      device_id: 9  # USB 设备 ID (/dev/video0)
       image_size: [128, 128]  # (height, width)
-    # 如果有第二个 USB 相机，取消注释：
-    # wrist_2:
-    #   device_id: 1  # /dev/video1
-    #   image_size: [128, 128]
+    wrist_2: # Can't use webcam and realsence at the same time, so just use realsence as RGB camera
+      device_id: 2  # /dev/video1
+      image_size: [128, 128]
 
   # RealSense 相机配置 (backend: "realsense")
   realsense_cameras:
