@@ -2,11 +2,25 @@
 
 完成代码配置后，开始测试所有硬件连接。
 
+**⚠️ 重要：所有命令都需要在项目根目录 `kinova-hil-serl/` 下运行！**
+
+```bash
+# 首先进入项目根目录
+cd ~/Documents/kinova-hil-serl  # 根据你的实际路径调整
+
+# 确认当前目录正确（应该看到 tools/ docs/ 等文件夹）
+ls
+```
+
+---
+
 ## 快速开始
 
 ### 一键验证所有硬件
 
 ```bash
+# !! 确保在项目根目录 kinova-hil-serl/ 下运行 !!
+
 # 测试所有硬件（推荐首次使用）
 python tools/quick_verify.py
 

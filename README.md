@@ -32,6 +32,18 @@ python tests/run_all_tests.py --skip-hardware
 
 ## 🚀 快速开始
 
+**⚠️ 重要：所有命令都需要在项目根目录下运行！**
+
+```bash
+# 克隆项目
+git clone https://github.com/O-Guya/kinova-hil-serl.git
+cd kinova-hil-serl
+
+# 确认当前目录正确（应该看到 tools/ docs/ kinova_rl_env/ 等文件夹）
+pwd
+ls
+```
+
 ### 1. 安装依赖
 
 ```bash
