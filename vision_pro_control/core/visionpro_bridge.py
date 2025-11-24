@@ -17,7 +17,7 @@ class VisionProBridge:
             'wrist_pose' : np.eye(4),
             'pinch_distance' : 1.0,
             'wrist_roll' : 0.0,
-            'timestamp' : time.time()
+            'timestamp' : 0  # 初始化为0，接收到数据后更新
         }
         self.data_lock = threading.Lock()
 
@@ -91,6 +91,15 @@ class VisionProBridge:
             pinch_distance = self.latest_data['pinch_distance']
 
         return pinch_distance
+
+    def get_latest_data(self) -> dict:
+        """
+        获取最新的 VisionPro 数据
+        Returns:
+            data: 包含 head_pose, wrist_pose, pinch_distance, wrist_roll, timestamp
+        """
+        with self.data_lock:
+            return self.latest_data.copy()
 
     def _validate_data(self, r: dict) -> bool:
         """
