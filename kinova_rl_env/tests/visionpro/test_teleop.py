@@ -6,7 +6,7 @@ from pathlib import Path
 # 添加路径
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from VisionProTeleop.avp_stream import VisionProStreamer
+from avp_stream import VisionProStreamer
 
 def test_connection(ip="192.168.1.125"):
     print(f"测试连接到 VisionPro: {ip}")
