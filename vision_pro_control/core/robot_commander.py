@@ -87,6 +87,8 @@ class RobotCommander(Node):
             return None
 
         try:
+            self.get_logger().debug(f"查询 TF: {self.base_frame} -> {self.tool_frame}")
+
             # 查询最新的 TF 变换
             transform = self._tf_buffer.lookup_transform(
                 self.base_frame,  # 目标坐标系
@@ -113,16 +115,40 @@ class RobotCommander(Node):
             # 拼接为 [x, y, z, qx, qy, qz, qw]
             tcp_pose = np.concatenate([pos, quat])
 
+            self.get_logger().debug(f"TCP 位姿: pos=[{pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f}], "
+                                   f"quat=[{quat[0]:.3f}, {quat[1]:.3f}, {quat[2]:.3f}, {quat[3]:.3f}]")
+
             # 缓存
             self._latest_tcp_pose = tcp_pose
 
             return tcp_pose
 
-        except (LookupException, ConnectivityException, ExtrapolationException) as e:
-            # TF 查询失败，返回缓存值
+        except LookupException as e:
+            self.get_logger().warn(f"TF lookup 失败: {e} (frame: {self.base_frame} -> {self.tool_frame})")
             if self._latest_tcp_pose is not None:
+                self.get_logger().debug("使用缓存的 TCP 位姿")
                 return self._latest_tcp_pose
+            return None
 
+        except ConnectivityException as e:
+            self.get_logger().warn(f"TF 连接错误: {e}")
+            if self._latest_tcp_pose is not None:
+                self.get_logger().debug("使用缓存的 TCP 位姿")
+                return self._latest_tcp_pose
+            return None
+
+        except ExtrapolationException as e:
+            self.get_logger().warn(f"TF 外推错误: {e}")
+            if self._latest_tcp_pose is not None:
+                self.get_logger().debug("使用缓存的 TCP 位姿")
+                return self._latest_tcp_pose
+            return None
+
+        except Exception as e:
+            self.get_logger().error(f"获取 TCP 位姿时发生未知错误: {type(e).__name__}: {e}")
+            if self._latest_tcp_pose is not None:
+                self.get_logger().debug("使用缓存的 TCP 位姿")
+                return self._latest_tcp_pose
             return None
         
     def safety_check_twist(self, twist_dict: dict) -> dict:
