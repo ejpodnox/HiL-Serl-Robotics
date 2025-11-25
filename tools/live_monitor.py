@@ -216,10 +216,15 @@ def main():
         if hasattr(config, 'visionpro') and hasattr(config.visionpro, 'ip'):
             default_vp_ip = config.visionpro.ip
         # 读取第一个 webcam 相机的 device_id
-        if config.camera.backend == 'webcam' and config.camera.webcam_cameras:
-            first_camera = list(config.camera.webcam_cameras.values())[0]
-            default_camera_id = first_camera['device_id']
-    except Exception:
+        if hasattr(config.camera, 'backend') and config.camera.backend == 'webcam':
+            if hasattr(config.camera, 'webcam_cameras'):
+                # webcam_cameras 是 _DictWrapper 对象，需要访问 _dict
+                webcam_dict = config.camera.webcam_cameras._dict
+                if webcam_dict:
+                    first_camera_key = list(webcam_dict.keys())[0]
+                    first_camera = webcam_dict[first_camera_key]
+                    default_camera_id = first_camera['device_id']
+    except Exception as e:
         # 配置读取失败，使用硬编码默认值
         pass
 
