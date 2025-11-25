@@ -47,15 +47,15 @@ def twist_to_action(twist, dt, gripper_position):
 
 
 def main():
-    # 尝试从配置文件读取默认 VisionPro IP
+    # 从配置文件读取默认 VisionPro IP
     default_vp_ip = '192.168.1.125'
     default_config_path = 'kinova_rl_env/config/kinova_config.yaml'
 
     try:
         from kinova_rl_env.kinova_env.config_loader import KinovaConfig
         config = KinovaConfig.from_yaml(default_config_path)
-        # VisionPro IP 可以从配置中读取（如果配置了 visionpro 部分）
-        # 这里暂时保持硬编码，因为 kinova_config.yaml 中可能没有 visionpro IP
+        if hasattr(config, 'visionpro') and hasattr(config.visionpro, 'ip'):
+            default_vp_ip = config.visionpro.ip
     except Exception:
         pass
 

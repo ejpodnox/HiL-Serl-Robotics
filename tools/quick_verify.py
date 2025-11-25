@@ -201,6 +201,9 @@ def main():
         from kinova_rl_env.kinova_env.config_loader import KinovaConfig
         config = KinovaConfig.from_yaml(default_config_path)
         default_robot_ip = config.robot.ip
+        # 读取 VisionPro IP
+        if hasattr(config, 'visionpro') and hasattr(config.visionpro, 'ip'):
+            default_vp_ip = config.visionpro.ip
         # 读取第一个 webcam 相机的 device_id
         if config.camera.backend == 'webcam' and config.camera.webcam_cameras:
             first_camera = list(config.camera.webcam_cameras.values())[0]

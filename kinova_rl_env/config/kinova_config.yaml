@@ -6,7 +6,7 @@ robot:
   ip: "192.168.8.10"
   dof: 8
   gripper_dof: 1
-  
+
   # 关节限制 (根据Kinova Gen3手册)
   joint_limits:
     # 位置限制 (rad)
@@ -14,9 +14,15 @@ robot:
     position_max: [3.14, 2.41, 3.14, 2.66, 3.14, 2.23, 3.14]
     # 速度限制 (rad/s)
     velocity_max: [1.3, 1.3, 1.3, 1.3, 1.2, 1.2, 1.2]
-  
+
   # Home位置 (安全起始位置)
   home_position: [0.0, 0.26, 0.0, -1.57, 0.0, 1.31, 0.0]
+
+# ============ VisionPro Configuration ============
+visionpro:
+  # VisionPro IP地址（用于遥操作数据收集）
+  ip: "192.168.1.125"
+  use_right_hand: true  # 使用右手还是左手
 
 # ============ ROS2 Topics ============
 ros2:
