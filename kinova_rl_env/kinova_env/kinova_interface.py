@@ -90,6 +90,13 @@ class KinovaInterface:
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self.node)
 
+        # 等待 TF buffer 填充数据，需要 spin 让节点接收消息
+        self.node.get_logger().info("等待 TF buffer 准备...")
+        import time
+        end_time = time.time() + 2.0
+        while time.time() < end_time:
+            rclpy.spin_once(self.node, timeout_sec=0.1)
+
         # 初始化摄像头
         self._cap = cv2.VideoCapture(self.camera_id)
         if not self._cap.isOpened():

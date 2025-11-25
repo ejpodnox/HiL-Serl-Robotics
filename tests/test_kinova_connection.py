@@ -72,12 +72,20 @@ def test_robot_commander(robot_ip: str, timeout: float = 5.0):
         commander = RobotCommander(robot_ip=robot_ip)
         print("✓ RobotCommander 创建成功")
 
+        # 等待 TF buffer 填充数据，需要 spin 让节点接收消息
+        print("  等待 TF buffer 准备...")
+        end_time = time.time() + 2.0
+        while time.time() < end_time:
+            rclpy.spin_once(commander, timeout_sec=0.1)
+
         # 尝试获取机械臂状态
         print(f"尝试获取机械臂状态（超时 {timeout}s）...")
         start_time = time.time()
 
         while time.time() - start_time < timeout:
             try:
+                # 继续 spin 以接收最新的 TF 数据
+                rclpy.spin_once(commander, timeout_sec=0.1)
                 pose = commander.get_tcp_pose()
                 if pose is not None:
                     print("✓ 成功获取末端位姿:")
@@ -87,7 +95,7 @@ def test_robot_commander(robot_ip: str, timeout: float = 5.0):
             except Exception as e:
                 pass
 
-            time.sleep(0.5)
+            time.sleep(0.1)
 
         print(f"✗ {timeout}s 内未能获取机械臂状态")
         print("提示: 请检查机械臂是否已启动 kortex_bringup")

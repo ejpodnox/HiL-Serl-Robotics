@@ -50,6 +50,12 @@ class TeleopDataRecorder:
             robot_ip=self.config['robot']['ip']
         )
 
+        # 等待 TF buffer 填充数据，需要 spin 让节点接收消息
+        print("  等待 TF buffer 准备...")
+        end_time = time.time() + 2.0
+        while time.time() < end_time:
+            rclpy.spin_once(self.robot_commander, timeout_sec=0.1)
+
         # 加载标定文件
         calibration_file = Path(__file__).parent / self.config['calibration']['file']
         self.mapper = CoordinateMapper(calibration_file=calibration_file)

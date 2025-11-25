@@ -91,13 +91,19 @@ class TeleopNode(Node):
         self.robot_commander = RobotCommander(
             robot_ip=self.config['robot']['ip']
         )
-        
+
+        # 等待 TF buffer 填充数据，需要 spin 让节点接收消息
+        self.get_logger().info("等待 TF buffer 准备...")
+        end_time = time.time() + 2.0
+        while time.time() < end_time:
+            rclpy.spin_once(self.robot_commander, timeout_sec=0.1)
+
         # 设置超低速安全参数
         safety_config = self.config['safety']
         self.robot_commander.safety_max_linear_vel = safety_config['max_linear_velocity']
         self.robot_commander.safety_max_angular_vel = safety_config['max_angular_velocity']
         self.robot_commander.enable_safety_check = safety_config['enable_safety_check']
-        
+
         self.get_logger().info(f"机械臂已连接: {self.config['robot']['ip']}")
         self.get_logger().info(f"安全限速: {safety_config['max_linear_velocity']} m/s")
         
