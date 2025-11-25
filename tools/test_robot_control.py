@@ -33,24 +33,36 @@ def test_basic_control(robot_ip: str):
     print(f"连接机械臂 ({robot_ip})...")
     commander = RobotCommander(robot_ip=robot_ip)
 
-    # 等待 TF buffer 准备
+    # 等待 TF buffer 准备（更长时间，持续 spin）
     print("等待 TF buffer 准备...")
-    end_time = time.time() + 2.0
+    print("  (这可能需要几秒钟，请耐心等待...)")
+    end_time = time.time() + 5.0  # 增加到5秒
     while time.time() < end_time:
         rclpy.spin_once(commander, timeout_sec=0.1)
+        time.sleep(0.05)
 
-    # 获取初始位置
+    # 获取初始位置（更多重试次数）
     print("\n获取初始 TCP 位置...")
     initial_pose = None
-    for _ in range(10):
+    max_attempts = 30  # 增加到30次尝试
+    for attempt in range(max_attempts):
         rclpy.spin_once(commander, timeout_sec=0.1)
         initial_pose = commander.get_tcp_pose()
         if initial_pose is not None:
             break
-        time.sleep(0.1)
+        if attempt % 5 == 0:
+            print(f"  尝试 {attempt + 1}/{max_attempts}...")
+        time.sleep(0.2)
 
     if initial_pose is None:
-        print("✗ 无法获取 TCP 位置，请检查 kortex_bringup 是否启动")
+        print("\n✗ 无法获取 TCP 位置")
+        print("\n可能的原因:")
+        print("  1. kortex_bringup 未启动")
+        print("     解决: 运行 'ros2 launch kinova_gen3_6dof_robotiq_2f_85_moveit_config robot.launch.py robot_ip:=<your_ip>'")
+        print("  2. TF frames 名称不匹配")
+        print("     解决: 运行 'python tools/check_ros_topics.py' 查看可用的 frames")
+        print("  3. 机械臂未正确连接")
+        print("     解决: 检查网络连接和机械臂电源")
         return False
 
     print(f"✓ 初始位置: [{initial_pose[0]:.3f}, {initial_pose[1]:.3f}, {initial_pose[2]:.3f}]")

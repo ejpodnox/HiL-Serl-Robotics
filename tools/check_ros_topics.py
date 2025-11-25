@@ -109,6 +109,31 @@ def check_tf_frames():
     print("【TF 坐标系检查】")
     print("=" * 60)
 
+    # 先列出所有可用的 frames
+    print("\n运行: ros2 run tf2_ros tf2_echo --print-tf-tree")
+    print("(3秒超时)")
+    tree_output = run_command("timeout 3 ros2 run tf2_tools view_frames.py 2>&1 | head -20")
+
+    # 使用更简单的方法：监听 /tf 话题
+    print("\n检查 /tf 话题是否有数据...")
+    tf_output = run_command("timeout 2 ros2 topic echo /tf --once 2>&1")
+
+    if "transforms" in tf_output or "frame_id" in tf_output:
+        print("✓ /tf 话题有数据")
+        # 尝试提取 frame 名称
+        lines = tf_output.split('\n')
+        frames = []
+        for line in lines:
+            if 'frame_id:' in line:
+                frame = line.split('frame_id:')[-1].strip().strip("'\"")
+                if frame and frame not in frames:
+                    frames.append(frame)
+        if frames:
+            print(f"  发现的 frames: {', '.join(frames[:5])}")
+    else:
+        print("✗ /tf 话题无数据或超时")
+        print("  提示: kortex_bringup 可能未正确启动")
+
     print("\n运行: ros2 run tf2_ros tf2_echo base_link tool_frame")
     print("(3秒超时)")
 
@@ -120,6 +145,11 @@ def check_tf_frames():
     else:
         print("✗ TF 变换获取失败")
         print(output)
+        print("\n可能的原因:")
+        print("  1. kortex_bringup 未启动或启动失败")
+        print("  2. 机械臂未正确连接")
+        print("  3. frame 名称可能不是 'base_link' 或 'tool_frame'")
+        print("  4. TF 发布器需要更多时间初始化")
 
 
 def check_gripper_topics():

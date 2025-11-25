@@ -168,77 +168,105 @@ class RobotCommander(Node):
                 return self._latest_tcp_pose
             return None
         
-    def safety_check_twist(self, twist_dict: dict) -> dict:
+    def safety_check_twist(self, twist_input):
         """
         安全检查：限制速度到安全范围
         Args:
-            twist_dict: 原始 twist 字典
+            twist_input: 可以是:
+                - numpy数组: [vx, vy, vz, wx, wy, wz]
+                - 字典: {'linear': {'x':..., 'y':..., 'z':...}, 'angular': {...}}
         Returns:
-            安全限制后的 twist 字典
+            安全限制后的 twist（与输入格式相同）
         """
         if not self.enable_safety_check:
-            return twist_dict
-            
-        linear = np.array([
-            twist_dict['linear']['x'],twist_dict['linear']['y'],twist_dict['linear']['z']
-        ])
-        
-        angular = np.array([
-            twist_dict['angular']['x'],
-            twist_dict['angular']['y'],
-            twist_dict['angular']['z']
-        ])
+            return twist_input
+
+        # 解析输入格式
+        if isinstance(twist_input, np.ndarray):
+            # numpy数组格式: [vx, vy, vz, wx, wy, wz]
+            if len(twist_input) != 6:
+                raise ValueError(f"Twist数组长度必须为6，当前为{len(twist_input)}")
+            linear = twist_input[:3]
+            angular = twist_input[3:]
+            input_is_array = True
+        elif isinstance(twist_input, dict):
+            # 字典格式
+            linear = np.array([
+                twist_input['linear']['x'],
+                twist_input['linear']['y'],
+                twist_input['linear']['z']
+            ])
+            angular = np.array([
+                twist_input['angular']['x'],
+                twist_input['angular']['y'],
+                twist_input['angular']['z']
+            ])
+            input_is_array = False
+        else:
+            raise TypeError(f"twist_input必须是numpy数组或字典，当前类型: {type(twist_input)}")
 
         linear_speed = np.linalg.norm(linear)
         angular_speed = np.linalg.norm(angular)
-        
+
         # 限制线速度
         if linear_speed > self.safety_max_linear_vel:
             scale = self.safety_max_linear_vel / linear_speed
             linear = linear * scale
             self.get_logger().warn(f'线速度超限，已缩放: {linear_speed:.3f} -> {self.safety_max_linear_vel:.3f} m/s')
-            
+
         # 限制角速度
         if angular_speed > self.safety_max_angular_vel:
             scale = self.safety_max_angular_vel / angular_speed
             angular = angular * scale
             self.get_logger().warn(f'角速度超限，已缩放: {angular_speed:.3f} -> {self.safety_max_angular_vel:.3f} rad/s')
-            
-        # 构造安全的 twist
-        safe_twist = {
-            'linear': {'x': float(linear[0]), 'y': float(linear[1]), 'z': float(linear[2])},
-            'angular': {'x': float(angular[0]), 'y': float(angular[1]), 'z': float(angular[2])}
-        }
+
+        # 返回与输入相同格式的结果
+        if input_is_array:
+            # 返回numpy数组
+            return np.concatenate([linear, angular])
+        else:
+            # 返回字典
+            return {
+                'linear': {'x': float(linear[0]), 'y': float(linear[1]), 'z': float(linear[2])},
+                'angular': {'x': float(angular[0]), 'y': float(angular[1]), 'z': float(angular[2])}
+            }
         
-        return safe_twist
-        
-    def send_twist(self, twist_dict: dict):
+    def send_twist(self, twist_input):
         """
         发送 Twist 指令到机械臂
         Args:
-            twist_dict: Twist 字典，格式：
-                {
-                    'linear': {'x': float, 'y': float, 'z': float},
-                    'angular': {'x': float, 'y': float, 'z': float}
-                }
+            twist_input: 可以是:
+                - numpy数组: [vx, vy, vz, wx, wy, wz]
+                - 字典: {'linear': {'x':..., 'y':..., 'z':...}, 'angular': {...}}
         """
         if self.is_emergency_stopped:
             self.get_logger().warn('急停状态，忽略 Twist 指令')
             return
-            
-        # 安全检查
-        safe_twist = self.safety_check_twist(twist_dict)
-        
+
+        # 安全检查（支持两种格式）
+        safe_twist = self.safety_check_twist(twist_input)
+
+        # 转换为ROS消息
         msg = Twist()
-        msg.linear.x = safe_twist['linear']['x']
-        msg.linear.y = safe_twist['linear']['y']
-        msg.linear.z = safe_twist['linear']['z']
-        msg.angular.x = safe_twist['angular']['x']
-        msg.angular.y = safe_twist['angular']['y']
-        msg.angular.z = safe_twist['angular']['z']
+        if isinstance(safe_twist, np.ndarray):
+            # numpy数组格式
+            msg.linear.x = float(safe_twist[0])
+            msg.linear.y = float(safe_twist[1])
+            msg.linear.z = float(safe_twist[2])
+            msg.angular.x = float(safe_twist[3])
+            msg.angular.y = float(safe_twist[4])
+            msg.angular.z = float(safe_twist[5])
+        else:
+            # 字典格式
+            msg.linear.x = safe_twist['linear']['x']
+            msg.linear.y = safe_twist['linear']['y']
+            msg.linear.z = safe_twist['linear']['z']
+            msg.angular.x = safe_twist['angular']['x']
+            msg.angular.y = safe_twist['angular']['y']
+            msg.angular.z = safe_twist['angular']['z']
 
         self.twist_publisher.publish(msg)
-        
+
         self.last_twist_time = time.time()
         
     def send_zero_twist(self):
