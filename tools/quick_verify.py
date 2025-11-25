@@ -71,14 +71,18 @@ class QuickVerify:
             commander = RobotCommander(robot_ip=robot_ip)
 
             import time
-            # 等待 TF buffer 填充数据
+            # 等待 TF buffer 填充数据，需要 spin 让节点接收消息
             print("  等待 TF buffer 准备...")
-            time.sleep(2.0)
+            end_time = time.time() + 2.0
+            while time.time() < end_time:
+                rclpy.spin_once(commander, timeout_sec=0.1)
 
             start_time = time.time()
 
             while time.time() - start_time < timeout:
                 try:
+                    # 继续 spin 以接收最新的 TF 数据
+                    rclpy.spin_once(commander, timeout_sec=0.1)
                     pose = commander.get_tcp_pose()
                     if pose is not None:
                         print(f"✓ Kinova 机械臂连接成功 ({robot_ip})")
@@ -87,7 +91,7 @@ class QuickVerify:
                         return True
                 except:
                     pass
-                time.sleep(0.5)
+                time.sleep(0.1)
 
             print(f"✗ {timeout}s 内未能获取机械臂状态")
             print("  提示: 确保已启动 kortex_bringup")
