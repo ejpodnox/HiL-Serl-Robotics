@@ -4,9 +4,12 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
-from geometry_msgs.msg import Twist
+from rclpy.duration import Duration
+from geometry_msgs.msg import Twist, PoseStamped
 from control_msgs.action import GripperCommand
 from sensor_msgs.msg import JointState
+from tf2_ros import TransformListener, Buffer
+from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
 import numpy as np
 import threading
 import time
@@ -53,9 +56,16 @@ class RobotCommander(Node):
             self.joint_state_callback,
             10
         )
-        
+
+        # 初始化 TF2 (用于获取 TCP 位姿)
+        self._tf_buffer = Buffer()
+        self._tf_listener = TransformListener(self._tf_buffer, self)
+        self.base_frame = 'base_link'
+        self.tool_frame = 'tool_frame'
+
         # 状态变量
         self.current_joint_states = None
+        self._latest_tcp_pose = None  # 缓存最新的 TCP 位姿
         self.last_twist_time = time.time()
         self.is_emergency_stopped = False
         
@@ -64,6 +74,56 @@ class RobotCommander(Node):
     def joint_state_callback(self, msg):
         """关节状态回调（用于监控）"""
         self.current_joint_states = msg
+
+    def get_tcp_pose(self):
+        """
+        获取当前 TCP 位姿（从 TF）
+
+        Returns:
+            np.array: [x, y, z, qx, qy, qz, qw] 或 None（如果获取失败）
+        """
+        if self._tf_buffer is None:
+            self.get_logger().warn("TF buffer 未初始化")
+            return None
+
+        try:
+            # 查询最新的 TF 变换
+            transform = self._tf_buffer.lookup_transform(
+                self.base_frame,  # 目标坐标系
+                self.tool_frame,  # 源坐标系
+                rclpy.time.Time(),  # 最新时间
+                timeout=Duration(seconds=0.1)
+            )
+
+            # 提取位置
+            pos = np.array([
+                transform.transform.translation.x,
+                transform.transform.translation.y,
+                transform.transform.translation.z
+            ])
+
+            # 提取四元数 [x, y, z, w]
+            quat = np.array([
+                transform.transform.rotation.x,
+                transform.transform.rotation.y,
+                transform.transform.rotation.z,
+                transform.transform.rotation.w
+            ])
+
+            # 拼接为 [x, y, z, qx, qy, qz, qw]
+            tcp_pose = np.concatenate([pos, quat])
+
+            # 缓存
+            self._latest_tcp_pose = tcp_pose
+
+            return tcp_pose
+
+        except (LookupException, ConnectivityException, ExtrapolationException) as e:
+            # TF 查询失败，返回缓存值
+            if self._latest_tcp_pose is not None:
+                return self._latest_tcp_pose
+
+            return None
         
     def safety_check_twist(self, twist_dict: dict) -> dict:
         """
