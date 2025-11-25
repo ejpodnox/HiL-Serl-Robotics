@@ -58,6 +58,18 @@ class TeleopDataRecorder:
 
         # 加载标定文件
         calibration_file = Path(__file__).parent / self.config['calibration']['file']
+        if not calibration_file.exists():
+            print("\n" + "=" * 60)
+            print("✗ 标定文件不存在！")
+            print("=" * 60)
+            print(f"缺失文件: {calibration_file}")
+            print("\n需要先运行标定流程生成标定文件。请执行:")
+            print("  python vision_pro_control/nodes/teleop_node.py")
+            print("\n或者运行快速标定:")
+            print("  python tools/calibrate_visionpro.py")
+            print("=" * 60)
+            raise FileNotFoundError(f"标定文件不存在: {calibration_file}")
+
         self.mapper = CoordinateMapper(calibration_file=calibration_file)
 
         # 设置参数
