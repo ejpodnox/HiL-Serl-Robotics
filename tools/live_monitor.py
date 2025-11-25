@@ -58,6 +58,13 @@ class LiveMonitor:
                 rclpy.init()
 
             self.robot_commander = RobotCommander(robot_ip=self.robot_ip)
+
+            # 等待 TF buffer 填充数据，需要 spin 让节点接收消息
+            print("  等待 TF buffer 准备...")
+            end_time = time.time() + 2.0
+            while time.time() < end_time:
+                rclpy.spin_once(self.robot_commander, timeout_sec=0.1)
+
             print("✓ 机械臂监控已启动")
             return True
         except Exception as e:
@@ -107,6 +114,10 @@ class LiveMonitor:
             return
 
         try:
+            # Spin 节点以接收最新的 TF 数据
+            import rclpy
+            rclpy.spin_once(self.robot_commander, timeout_sec=0.01)
+
             tcp_pose = self.robot_commander.get_tcp_pose()
 
             if tcp_pose is not None:
