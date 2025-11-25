@@ -103,9 +103,15 @@ def test_visionpro_dummy():
 
 
 def main():
-    # 尝试从配置文件读取默认 VisionPro IP（如果配置了）
+    # 从配置文件读取默认 VisionPro IP
     default_vp_ip = '192.168.1.125'
-    # 注意：kinova_config.yaml 中可能没有 visionpro IP，所以这里使用默认值
+    try:
+        from kinova_rl_env.kinova_env.config_loader import KinovaConfig
+        config = KinovaConfig.from_yaml('kinova_rl_env/config/kinova_config.yaml')
+        if hasattr(config, 'visionpro') and hasattr(config.visionpro, 'ip'):
+            default_vp_ip = config.visionpro.ip
+    except Exception:
+        pass
 
     parser = argparse.ArgumentParser(description='VisionPro 连接测试')
     parser.add_argument('--vp_ip', type=str, default=default_vp_ip,

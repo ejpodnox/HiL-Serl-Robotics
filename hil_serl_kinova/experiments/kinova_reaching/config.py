@@ -29,6 +29,8 @@ def get_config():
         from kinova_rl_env.kinova_env.config_loader import KinovaConfig
         kinova_config = KinovaConfig.from_yaml(config.env_config_path)
         default_robot_ip = kinova_config.robot.ip
+        if hasattr(kinova_config, 'visionpro') and hasattr(kinova_config.visionpro, 'ip'):
+            default_vp_ip = kinova_config.visionpro.ip
     except Exception:
         pass
 
