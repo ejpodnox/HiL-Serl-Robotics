@@ -71,6 +71,10 @@ class QuickVerify:
             commander = RobotCommander(robot_ip=robot_ip)
 
             import time
+            # 等待 TF buffer 填充数据
+            print("  等待 TF buffer 准备...")
+            time.sleep(2.0)
+
             start_time = time.time()
 
             while time.time() - start_time < timeout:

@@ -124,7 +124,15 @@ class RobotCommander(Node):
             return tcp_pose
 
         except LookupException as e:
-            self.get_logger().warn(f"TF lookup 失败: {e} (frame: {self.base_frame} -> {self.tool_frame})")
+            # 尝试列出所有可用的 frames 来帮助调试
+            try:
+                all_frames = self._tf_buffer.all_frames_as_yaml()
+                self.get_logger().warn(f"TF lookup 失败: {e} (frame: {self.base_frame} -> {self.tool_frame})")
+                self.get_logger().info(f"当前可用的 TF frames:\n{all_frames}")
+            except Exception:
+                self.get_logger().warn(f"TF lookup 失败: {e} (frame: {self.base_frame} -> {self.tool_frame})")
+                self.get_logger().warn("提示：请检查 kortex_bringup 是否已启动")
+
             if self._latest_tcp_pose is not None:
                 self.get_logger().debug("使用缓存的 TCP 位姿")
                 return self._latest_tcp_pose
