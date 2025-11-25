@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kinova-hil-serl"
+version = "1.0.0"
+description = "Human-in-the-Loop Self-supervised RL for Kinova Gen3 with VisionPro Teleoperation"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | ros2_kortex
+  | VisionProTeleop
+  | hil-serl
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip_glob = ["ros2_kortex/*", "VisionProTeleop/*", "hil-serl/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["kinova_rl_env/tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --cov=vision_pro_control --cov=kinova_rl_env --cov=hil_serl_kinova"
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+exclude = ["ros2_kortex", "VisionProTeleop", "hil-serl"]

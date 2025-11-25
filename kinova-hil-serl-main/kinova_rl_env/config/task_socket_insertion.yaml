@@ -1,0 +1,100 @@
+# Socket Insertion 任务配置
+# 插2孔插座任务（类似论文中的插USB任务）
+
+# 继承基础 Kinova 配置
+_base_: "kinova_config.yaml"
+
+# ============ 任务配置 ============
+task:
+  name: "socket_insertion"
+
+  # 插座位置（世界坐标系，单位：米）
+  # 根据你的实际场景调整！
+  socket_position: [0.45, 0.15, 0.25]  # [x, y, z]
+
+  # 插座方向（四元数: qx, qy, qz, qw）
+  # 默认：垂直于桌面，孔朝向机器人
+  # 根据实际插座朝向调整！
+  socket_orientation: [0.0, 0.707, 0.0, 0.707]
+
+  # 插头初始位置（相对于机械臂base）
+  plug_initial_position: [0.3, -0.2, 0.15]
+
+  # 成功判定阈值
+  success_threshold:
+    approach: 0.05    # 5cm - 接近阶段
+    alignment: 0.02   # 2cm - 对齐阶段
+    insertion: 0.01   # 1cm - 插入成功
+    orientation: 0.1  # 姿态误差阈值
+
+  # 奖励配置
+  reward:
+    type: "dense"  # 使用dense reward
+
+    # 各阶段奖励权重
+    approach_weight: 1.0
+    alignment_weight: 2.0
+    insertion_weight: 5.0
+
+    # 成功bonus
+    success_bonus: 10.0
+
+# ============ 控制参数 ============
+control:
+  frequency: 20
+  dt: 0.05
+  action_scale: 0.3  # 插入任务需要更精细的控制，降低动作幅度
+  max_episode_steps: 800  # 插入任务可能需要更多步数
+
+# ============ 观测空间 ============
+observation:
+  include_joint_positions: true
+  include_joint_velocities: true
+  include_gripper_position: true  # 插入任务需要夹爪状态
+  include_end_effector_pose: true  # 需要末端位姿
+  state_dim: 22  # 7 pos + 7 vel + 7 tcp_pose + 1 gripper
+
+# ============ 相机配置 ============
+camera:
+  enabled: true
+  backend: "webcam"
+
+  # 插入任务建议使用双相机（腕部+第三视角）
+  webcam_cameras:
+    wrist_1:
+      device_id: 0
+      image_size: [128, 128]
+    # 取消注释以添加第三视角相机
+    # third_person:
+    #   device_id: 1
+    #   image_size: [128, 128]
+
+# ============ 数据采集配置 ============
+data_collection:
+  # 演示数据保存路径
+  demos_dir: "./demos/socket_insertion"
+
+  # 每条演示的目标步数
+  target_steps: 500
+
+  # 采集建议
+  # 1. 至少需要 20-30 条成功演示
+  # 2. 每条演示应该展示完整的插入流程
+  # 3. 包含不同的起始位置和插入角度
+
+# ============ 训练配置 ============
+training:
+  # BC 训练
+  bc:
+    batch_size: 256
+    learning_rate: 3e-4
+    num_epochs: 100
+    validation_split: 0.1
+
+  # RLPD 训练
+  rlpd:
+    demo_ratio: 0.5  # 50% demo data, 50% online data
+    batch_size: 256
+    learning_rate: 3e-4
+    buffer_size: 100000
+    num_steps: 100000

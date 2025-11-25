@@ -1,0 +1,128 @@
+# Flip Egg 任务配置
+# 反转鸡蛋任务（需要精细控制和力反馈）
+
+# 继承基础 Kinova 配置
+_base_: "kinova_config.yaml"
+
+# ============ 任务配置 ============
+task:
+  name: "flip_egg"
+
+  # 鸡蛋初始位置（桌面上，单位：米）
+  # 根据你的实际场景调整！
+  egg_initial_position: [0.4, 0.0, 0.05]  # [x, y, z] 桌面高度5cm
+
+  # 鸡蛋初始方向（直立，尖端朝上）
+  egg_initial_orientation: [0.0, 0.0, 0.0, 1.0]  # [qx, qy, qz, qw]
+
+  # 目标方向（翻转180度，尖端朝下）
+  egg_target_orientation: [1.0, 0.0, 0.0, 0.0]  # [qx, qy, qz, qw]
+
+  # 高度参数
+  grasp_height: 0.08   # 抓取高度（鸡蛋中心）
+  flip_height: 0.20    # 翻转高度
+  place_height: 0.05   # 放置高度
+
+  # 成功判定阈值
+  success_threshold:
+    approach: 0.03              # 3cm - 接近阶段
+    grasp: 0.01                 # 1cm - 抓取阶段
+    lift: 0.02                  # 2cm - 抬起阶段
+    flip_orientation: 0.2       # 姿态阈值
+    place: 0.02                 # 2cm - 放置阶段
+
+  # 夹爪力度（0-1，需要根据实际校准）
+  safe_gripper_force_min: 0.3  # 最小安全力度
+  safe_gripper_force_max: 0.7  # 最大安全力度（超过可能破碎）
+
+  # 奖励配置
+  reward:
+    type: "dense"
+
+    # 各阶段奖励权重
+    approach_weight: 1.0
+    grasp_weight: 2.0
+    lift_weight: 1.5
+    flip_weight: 3.0
+    place_weight: 2.0
+
+    # 成功bonus
+    success_bonus: 20.0
+
+    # 失败惩罚
+    drop_penalty: -10.0   # 掉落鸡蛋
+    break_penalty: -20.0  # 打破鸡蛋
+
+# ============ 控制参数 ============
+control:
+  frequency: 20
+  dt: 0.05
+  action_scale: 0.25  # 非常精细的控制，降低动作幅度
+  max_episode_steps: 1000  # 翻转任务步骤较多
+
+# ============ 观测空间 ============
+observation:
+  include_joint_positions: true
+  include_joint_velocities: true
+  include_gripper_position: true  # 关键：需要夹爪位置
+  include_end_effector_pose: true  # 需要末端位姿
+  include_force_torque: false      # 如果有力传感器，建议启用
+  state_dim: 22  # 7 pos + 7 vel + 7 tcp_pose + 1 gripper
+
+# ============ 相机配置 ============
+camera:
+  enabled: true
+  backend: "webcam"
+
+  # 翻转任务强烈建议使用多相机（腕部+顶视图）
+  webcam_cameras:
+    wrist_1:
+      device_id: 0
+      image_size: [128, 128]
+    # 强烈建议添加顶视图相机，便于检测鸡蛋位置和姿态
+    # top_view:
+    #   device_id: 1
+    #   image_size: [128, 128]
+
+# ============ 数据采集配置 ============
+data_collection:
+  # 演示数据保存路径
+  demos_dir: "./demos/flip_egg"
+
+  # 每条演示的目标步数
+  target_steps: 600
+
+  # 采集建议
+  # 1. 至少需要 30-50 条成功演示（这是一个困难任务）
+  # 2. 包含不同起始位置的鸡蛋
+  # 3. 展示不同的翻转轨迹
+  # 4. 注意：初期可以用塑料鸡蛋或其他物体代替真鸡蛋
+
+# ============ 训练配置 ============
+training:
+  # BC 训练
+  bc:
+    batch_size: 256
+    learning_rate: 3e-4
+    num_epochs: 150  # 更多epoch
+    validation_split: 0.1
+
+  # RLPD 训练
+  rlpd:
+    demo_ratio: 0.6  # 60% demo data（更依赖演示）
+    batch_size: 256
+    learning_rate: 3e-4
+    buffer_size: 100000
+    num_steps: 200000  # 更多训练步数
+
+# ============ 调试和安全 ============
+debug:
+  # 模拟鸡蛋物理
+  use_simulated_egg: true  # 如果为true，使用虚拟鸡蛋进行初期训练
+
+  # 力控制限制（如果硬件支持）
+  enable_force_limit: false
+  max_gripper_force: 5.0  # 牛顿
+
+  # 可视化
+  visualize_egg_pose: true  # 在相机图像上标注鸡蛋位姿
