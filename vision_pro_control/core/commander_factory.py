@@ -20,68 +20,50 @@ def create_commander(
     Args:
         robot_ip: 机械臂 IP 地址
         backend: 控制后端
-            - 'auto': 自动选择（优先 kortex_api，失败则用 ros2）
-            - 'kortex': 使用 Kortex API（推荐）
-            - 'ros2': 使用 ROS2 控制器
-        node_name: ROS2 节点名称（仅用于 ros2 后端）
+            - 'auto': 自动选择（优先 joint，最可靠）
+            - 'joint': 使用 joint_trajectory_controller（推荐）
+            - 'ros2': 使用 ROS2 twist_controller
+            - 'kortex': 使用 Kortex API（需手动安装）
+        node_name: ROS2 节点名称
         username: Kortex API 用户名（仅用于 kortex 后端）
         password: Kortex API 密码（仅用于 kortex 后端）
 
     Returns:
-        RobotCommander 或 KortexCommander 实例
+        Commander 实例
 
     Examples:
         >>> # 自动选择（推荐）
         >>> commander = create_commander('192.168.8.10')
 
-        >>> # 强制使用 Kortex API
-        >>> commander = create_commander('192.168.8.10', backend='kortex')
-
-        >>> # 强制使用 ROS2
-        >>> commander = create_commander('192.168.8.10', backend='ros2')
+        >>> # 使用 joint 控制
+        >>> commander = create_commander('192.168.8.10', backend='joint')
     """
 
     if backend == 'auto':
-        # 优先尝试 Kortex API
-        try:
-            from .kortex_commander import KortexCommander, KORTEX_API_AVAILABLE
+        # 优先使用 joint（最可靠）
+        from .joint_velocity_commander import JointVelocityCommander
+        return JointVelocityCommander(robot_ip=robot_ip, node_name=node_name)
 
-            if KORTEX_API_AVAILABLE:
-                print(f"✓ 使用 Kortex API 控制器")
-                return KortexCommander(
-                    robot_ip=robot_ip,
-                    username=username,
-                    password=password
-                )
-        except Exception as e:
-            print(f"⚠️  Kortex API 不可用: {e}")
-            print("  回退到 ROS2 控制器")
+    elif backend == 'joint':
+        from .joint_velocity_commander import JointVelocityCommander
+        return JointVelocityCommander(robot_ip=robot_ip, node_name=node_name)
 
-        # 回退到 ROS2
+    elif backend == 'ros2':
         from .robot_commander import RobotCommander
-        print(f"✓ 使用 ROS2 控制器")
         return RobotCommander(robot_ip=robot_ip, node_name=node_name)
 
     elif backend == 'kortex':
-        # 强制使用 Kortex API
         from .kortex_commander import KortexCommander
-        print(f"✓ 使用 Kortex API 控制器")
         return KortexCommander(
             robot_ip=robot_ip,
             username=username,
             password=password
         )
 
-    elif backend == 'ros2':
-        # 强制使用 ROS2
-        from .robot_commander import RobotCommander
-        print(f"✓ 使用 ROS2 控制器")
-        return RobotCommander(robot_ip=robot_ip, node_name=node_name)
-
     else:
         raise ValueError(
             f"未知的 backend: {backend}。"
-            f"支持的选项: 'auto', 'kortex', 'ros2'"
+            f"支持的选项: 'auto', 'joint', 'ros2', 'kortex'"
         )
 
 
