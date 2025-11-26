@@ -5,7 +5,7 @@ import rclpy
 import time
 import numpy as np
 import argparse
-from vision_pro_control.core import create_robot_commander
+from vision_pro_control.core import robot_commander
 
 
 def main():
@@ -16,7 +16,7 @@ def main():
     args = parser.parse_args()
 
     rclpy.init()
-    commander = create_robot_commander(robot_ip=args.robot_ip, backend=args.backend)
+    commander = robot_commander(robot_ip=args.robot_ip, backend=args.backend)
 
     print("等待关节状态...")
     for _ in range(20):
