@@ -21,7 +21,7 @@ import yaml
 
 from vision_pro_control.core.visionpro_bridge import VisionProBridge
 from vision_pro_control.core.coordinate_mapper import CoordinateMapper
-from vision_pro_control.core.robot_commander import RobotCommander
+from vision_pro_control.core import robot_commander
 from vision_pro_control.utils.keyboard_monitor import KeyboardMonitor
 
 
@@ -46,7 +46,7 @@ class TeleopDataRecorder:
             use_right_hand=self.config['visionpro']['use_right_hand']
         )
 
-        self.robot_commander = RobotCommander(
+        self.robot_commander = robot_commander(
             robot_ip=self.config['robot']['ip']
         )
 

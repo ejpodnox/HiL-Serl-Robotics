@@ -15,7 +15,7 @@ from pathlib import Path
 # 导入自定义模块
 from vision_pro_control.core.visionpro_bridge import VisionProBridge
 from vision_pro_control.core.coordinate_mapper import CoordinateMapper
-from vision_pro_control.core.robot_commander import RobotCommander
+from vision_pro_control.core import robot_commander
 from vision_pro_control.core.calibrator import WorkspaceCalibrator
 from vision_pro_control.utils.keyboard_monitor import KeyboardMonitor
 
@@ -88,7 +88,7 @@ class TeleopNode(Node):
         
     def init_robot_commander(self):
         """初始化机械臂控制器"""
-        self.robot_commander = RobotCommander(
+        self.robot_commander = robot_commander(
             robot_ip=self.config['robot']['ip']
         )
 

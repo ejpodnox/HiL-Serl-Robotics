@@ -7,7 +7,7 @@
 from typing import Optional
 
 
-def create_commander(
+def robot_commander(
     robot_ip: str,
     backend: str = 'auto',
     node_name: str = 'robot_commander',
@@ -33,10 +33,10 @@ def create_commander(
 
     Examples:
         >>> # 自动选择（推荐）
-        >>> commander = create_commander('192.168.8.10')
+        >>> commander = robot_commander('192.168.8.10')
 
         >>> # 使用 joint 控制
-        >>> commander = create_commander('192.168.8.10', backend='joint')
+        >>> commander = robot_commander('192.168.8.10', backend='joint')
     """
 
     if backend == 'auto':
@@ -67,7 +67,7 @@ def create_commander(
         )
 
 
-def create_commander_from_config(config: dict):
+def robot_commander_from_config(config: dict):
     """
     从配置字典创建控制器
 
@@ -87,4 +87,4 @@ def create_commander_from_config(config: dict):
     robot_ip = robot_config.get('ip', '192.168.8.10')
     backend = robot_config.get('control_backend', 'auto')
 
-    return create_commander(robot_ip=robot_ip, backend=backend)
+    return robot_commander(robot_ip=robot_ip, backend=backend)
