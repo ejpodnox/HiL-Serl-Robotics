@@ -65,8 +65,9 @@ class JointVelocityCommander(Node):
 
     def joint_state_callback(self, msg):
         """关节状态回调"""
-        self.current_joint_positions = np.array(msg.position)
-        self.current_joint_velocities = np.array(msg.velocity)
+        # 只取前7个关节（忽略夹爪）
+        self.current_joint_positions = np.array(msg.position[:7])
+        self.current_joint_velocities = np.array(msg.velocity[:7]) if msg.velocity else np.zeros(7)
 
     def safety_check_twist(self, twist_input):
         """安全检查（与其他 Commander 接口一致）"""
