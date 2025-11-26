@@ -31,9 +31,11 @@ python tools/test_robot_control.py
 
 ---
 
-## 方式2: Kortex API（KortexCommander）⭐ 推荐
+## 方式2: Kortex API（KortexCommander）
 
 直接使用 Kinova 的 Kortex Python API，绕过 ROS2 控制器。
+
+**⚠️ 注意：Kortex API 不在 PyPI 上，需要手动安装**
 
 **优点：**
 - ✅ 不依赖ROS2控制器
@@ -42,13 +44,19 @@ python tools/test_robot_control.py
 - ✅ 仍然保持twist控制接口
 
 **缺点：**
-- 需要额外安装 kortex_api
+- ❌ **需要手动安装** kortex_api（不能 pip install）
 - 不能使用ROS2的监控工具
 
 **安装依赖：**
 ```bash
-pip install kortex_api scipy
+# Kortex API 需要从 GitHub 手动安装
+# 参考: https://github.com/Kinovarobotics/kortex
+
+# scipy 可以正常安装
+pip install scipy
 ```
+
+**由于安装复杂，建议先尝试激活 twist_controller（方式1）**
 
 **使用方法：**
 ```python
