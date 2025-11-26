@@ -152,8 +152,9 @@ class JointVelocityCommander(Node):
         point = JointTrajectoryPoint()
         # 目标位置 = 当前位置 + 速度 * 时间
         dt = 0.1  # 100ms
-        point.positions = self.current_joint_positions + joint_velocities * dt
-        point.velocities = joint_velocities.tolist()
+        target_positions = self.current_joint_positions + joint_velocities * dt
+        point.positions = [float(x) for x in target_positions]
+        point.velocities = [float(x) for x in joint_velocities]
         point.time_from_start.sec = 0
         point.time_from_start.nanosec = int(dt * 1e9)
 
@@ -171,7 +172,7 @@ class JointVelocityCommander(Node):
         trajectory.joint_names = self.joint_names
 
         point = JointTrajectoryPoint()
-        point.positions = self.current_joint_positions.tolist()
+        point.positions = [float(x) for x in self.current_joint_positions]
         point.velocities = [0.0] * 7
         point.time_from_start.sec = 0
         point.time_from_start.nanosec = int(0.1 * 1e9)
