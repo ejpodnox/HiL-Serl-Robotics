@@ -31,6 +31,13 @@ pillow>=8.0.0
 tqdm>=4.60.0
 tabulate>=0.8.9
 
+# ============ Kinova API ============
+# Kortex Python API (用于直接控制机械臂，绕过 ROS2)
+# 安装方法: pip install kortex_api
+# 或从 https://github.com/Kinovarobotics/kortex 下载
+kortex_api>=2.3.0
+scipy>=1.7.0  # 用于四元数转换
+
 # ============ Development (Optional) ============
 # pytest>=6.0.0
 # pytest-cov>=2.12.0
