@@ -8,7 +8,7 @@ from .robot_commander import RobotCommander
 from .kortex_commander import KortexCommander
 from .joint_velocity_commander import JointVelocityCommander
 from .calibrator import WorkspaceCalibrator
-from .commander_factory import create_commander, create_commander_from_config
+from .commander_factory import create_robot_commander, create_robot_commander_from_config
 
 __all__ = [
     "VisionProBridge",
@@ -17,6 +17,6 @@ __all__ = [
     "KortexCommander",
     "JointVelocityCommander",
     "WorkspaceCalibrator",
-    "create_commander",
-    "create_commander_from_config",
+    "create_robot_commander",
+    "create_robot_commander_from_config",
 ]
