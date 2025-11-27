@@ -161,7 +161,7 @@ class TeleopDataRecorder:
                     # 5. 打印状态（每秒一次）
                     if step % 50 == 0:
                         joint_state = self.interface.get_joint_state()
-                        q = joint_state['positions'] if joint_state else None
+                        q = joint_state[0] if joint_state else None  # 元组的第一个元素是 positions
                         vx = twist['linear']['x']
                         vy = twist['linear']['y']
                         vz = twist['linear']['z']
@@ -171,7 +171,7 @@ class TeleopDataRecorder:
                               f"速度[{vx:.3f},{vy:.3f},{vz:.3f}]")
 
                         if q is not None:
-                            print(f"        关节: " + " ".join([f"{j:5.2f}" for j in q[:7]]))
+                            print(f"        关节: " + " ".join([f"{j:5.2f}" for j in q]))
 
                     step += 1
 
