@@ -8,7 +8,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.duration import Duration
 from sensor_msgs.msg import JointState
-from std_msgs.msg import Float64MultiArray
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 import numpy as np
 from std_msgs.msg import Float64
 from sensor_msgs.msg import Image
@@ -26,7 +26,7 @@ class KinovaInterface:
     """
     Kinova机器人的ROS2接口封装
     """
-    
+
     def __init__(self, node_name='kinova_interface'):
         self.node_name = node_name
         self.node = None
@@ -38,8 +38,12 @@ class KinovaInterface:
 
         # 配置
         self.joint_state_topic = '/joint_states'
-        self.velocity_command_topic = '/velocity_controller/commands'
+        self.trajectory_topic = '/joint_trajectory_controller/joint_trajectory'
         self.num_joints = 7
+        self.joint_names = [
+            'joint_1', 'joint_2', 'joint_3', 'joint_4',
+            'joint_5', 'joint_6', 'joint_7'
+        ]
 
         self.gripper_command_topic = '/gripper_controller/gripper_cmd'
         self._gripper_state = 0.0  # 缓存gripper位置
@@ -72,10 +76,10 @@ class KinovaInterface:
             10
         )
 
-        # 发布速度命令
-        self._vel_pub = self.node.create_publisher(
-            Float64MultiArray,
-            self.velocity_command_topic,
+        # 发布关节轨迹（使用 joint_trajectory_controller）
+        self._trajectory_pub = self.node.create_publisher(
+            JointTrajectory,
+            self.trajectory_topic,
             10
         )
 
@@ -122,13 +126,37 @@ class KinovaInterface:
         return np.array(positions),np.array(velocites)
     
     def send_joint_velocities(self, velocities):
+        """
+        发送关节速度命令（使用 joint_trajectory_controller）
+
+        Args:
+            velocities: 7个关节的速度 (rad/s)
+        """
         if len(velocities) != 7:
             raise ValueError(f"需要7个速度，收到{len(velocities)}个")
-        v_list = list(velocities)  # list()兼容list和array
-        msg = Float64MultiArray()
-        msg.data = v_list
 
-        self._vel_pub.publish(msg)
+        # 获取当前关节位置
+        rclpy.spin_once(self.node, timeout_sec=0.01)
+        if self._latest_joint_state is None:
+            return
+
+        current_positions = np.array(self._latest_joint_state.position[:7])
+        joint_velocities = np.array(velocities)
+
+        # 创建轨迹消息
+        trajectory = JointTrajectory()
+        trajectory.joint_names = self.joint_names
+
+        point = JointTrajectoryPoint()
+        dt = 0.1  # 100ms
+        target_positions = current_positions + joint_velocities * dt
+        point.positions = [float(x) for x in target_positions]
+        point.velocities = [float(x) for x in joint_velocities]
+        point.time_from_start.sec = 0
+        point.time_from_start.nanosec = int(dt * 1e9)
+
+        trajectory.points = [point]
+        self._trajectory_pub.publish(trajectory)
 
     def get_image(self):
         """获取摄像头图像"""
