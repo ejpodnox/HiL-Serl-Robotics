@@ -155,40 +155,70 @@ class JointVelocityCommander(Node):
 
     def compute_jacobian(self, q: np.ndarray) -> np.ndarray:
         """
-        精确计算几何雅可比矩阵（数值微分法）
-        
+        解析计算雅可比矩阵（基于 Kinova Gen3 URDF 精确参数）
+
+        使用几何雅可比方法：J = [J_v; J_ω]
+        - J_v[i] = z_i × (p_ee - p_i)  (线速度)
+        - J_ω[i] = z_i                 (角速度)
+
         Args:
             q: 当前关节位置 (7,)，但只使用前6个
             
         Returns:
             J: 雅可比矩阵 (6, 7)，最后一列为零（第7关节不影响前6DOF末端）
         """
+        # 基于 URDF 的精确链长度（从 gen3/7dof/urdf/gen3_macro.xacro）
+        # 关节变换参数 (x, y, z) - 从 URDF joint origins
+        d1 = 0.15643   # base to shoulder (z)
+        d2 = 0.12838   # shoulder to half_arm_1 (z)
+        d3 = 0.21038   # half_arm_1 to half_arm_2 (y)
+        d4 = 0.21038   # half_arm_2 to forearm (z)
+        d5 = 0.20843   # forearm to wrist_1 (y)
+        d6 = 0.10593   # wrist_1 to wrist_2 (z)
+        d7 = 0.10593   # wrist_2 to bracelet (y)
+        d_ee = 0.061525  # bracelet to end_effector (z)
+
+        # 使用齐次变换矩阵计算正运动学
+        # 每个关节的局部变换（基于 URDF）
+        def rot_z(theta):
+            c, s = np.cos(theta), np.sin(theta)
+            return np.array([[c, -s, 0, 0], [s, c, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+
+        def rot_x(theta):
+            c, s = np.cos(theta), np.sin(theta)
+            return np.array([[1, 0, 0, 0], [0, c, -s, 0], [0, s, c, 0], [0, 0, 0, 1]])
+
+        def trans(x, y, z):
+            return np.array([[1, 0, 0, x], [0, 1, 0, y], [0, 0, 1, z], [0, 0, 0, 1]])
+
+        # 构建变换链（从 base 到每个关节）
+        T0 = np.eye(4)  # base
+        T1 = T0 @ trans(0, 0, d1) @ rot_x(np.pi) @ rot_z(q[0])
+        T2 = T1 @ trans(0, 0.005375, -d2) @ rot_x(np.pi/2) @ rot_z(q[1])
+        T3 = T2 @ trans(0, -d3, -0.006375) @ rot_x(-np.pi/2) @ rot_z(q[2])
+        T4 = T3 @ trans(0, 0.006375, -d4) @ rot_x(np.pi/2) @ rot_z(q[3])
+        T5 = T4 @ trans(0, -d5, -0.006375) @ rot_x(-np.pi/2) @ rot_z(q[4])
+        T6 = T5 @ trans(0, 0.00017505, -d6) @ rot_x(np.pi/2) @ rot_z(q[5])
+        T7 = T6 @ trans(0, -d7, -0.00017505) @ rot_x(-np.pi/2) @ rot_z(q[6])
+        T_ee = T7 @ trans(0, 0, -d_ee) @ rot_x(np.pi)
+
+        # 提取各关节和末端的位置
+        p = [T0[:3, 3], T1[:3, 3], T2[:3, 3], T3[:3, 3],
+             T4[:3, 3], T5[:3, 3], T6[:3, 3], T7[:3, 3]]
+        p_ee = T_ee[:3, 3]
+
+        # 提取各关节的 z 轴方向（旋转轴）
+        z = [T0[:3, 2], T1[:3, 2], T2[:3, 2], T3[:3, 2],
+             T4[:3, 2], T5[:3, 2], T6[:3, 2], T7[:3, 2]]
+
+        # 计算几何雅可比
         J = np.zeros((6, 7))
-        
-        # 计算当前 TCP 位姿
-        p0, R0 = self.forward_kinematics(q)
-        
-        # 对前6个关节数值微分
-        delta = 1e-6
-        for i in range(6):
-            q_perturbed = q.copy()
-            q_perturbed[i] += delta
-            
-            p_plus, R_plus = self.forward_kinematics(q_perturbed)
-            
-            # 位置雅可比（线性速度）
-            J[:3, i] = (p_plus - p0) / delta
-            
-            # 姿态雅可比（角速度）
-            # 使用旋转向量表示
-            from scipy.spatial.transform import Rotation as Rot
-            dR = R_plus @ R0.T
-            rotvec = Rot.from_matrix(dR).as_rotvec()
-            J[3:, i] = rotvec / delta
-        
-        # 第7关节对前6DOF末端姿态无影响（如果是末端旋转关节）
-        J[:, 6] = 0
-        
+        for i in range(7):
+            # 线速度部分：J_v[i] = z_i × (p_ee - p_i)
+            J[:3, i] = np.cross(z[i], p_ee - p[i])
+            # 角速度部分：J_ω[i] = z_i
+            J[3:, i] = z[i]
+
         return J
 
     def cartesian_to_joint_velocity(self, twist: np.ndarray) -> np.ndarray:
@@ -283,21 +313,56 @@ class JointVelocityCommander(Node):
 
     def get_tcp_pose(self) -> Optional[np.ndarray]:
         """
-        获取 TCP 位姿（现在可以真正计算了）
-        
+        获取 TCP 位姿（使用正运动学）
+
         Returns:
             pose: [x, y, z, qx, qy, qz, qw] 或 None
         """
         if self.current_joint_positions is None:
             return None
-        
-        p, R = self.forward_kinematics(self.current_joint_positions)
-        
-        # 转换为四元数
+
         from scipy.spatial.transform import Rotation as Rot
-        quat = Rot.from_matrix(R).as_quat()  # [qx, qy, qz, qw]
-        
-        return np.concatenate([p, quat])
+
+        q = self.current_joint_positions
+
+        # 使用与雅可比相同的参数
+        d1 = 0.15643
+        d2 = 0.12838
+        d3 = 0.21038
+        d4 = 0.21038
+        d5 = 0.20843
+        d6 = 0.10593
+        d7 = 0.10593
+        d_ee = 0.061525
+
+        def rot_z(theta):
+            c, s = np.cos(theta), np.sin(theta)
+            return np.array([[c, -s, 0, 0], [s, c, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+
+        def rot_x(theta):
+            c, s = np.cos(theta), np.sin(theta)
+            return np.array([[1, 0, 0, 0], [0, c, -s, 0], [0, s, c, 0], [0, 0, 0, 1]])
+
+        def trans(x, y, z):
+            return np.array([[1, 0, 0, x], [0, 1, 0, y], [0, 0, 1, z], [0, 0, 0, 1]])
+
+        # 计算末端位姿
+        T = np.eye(4)
+        T = T @ trans(0, 0, d1) @ rot_x(np.pi) @ rot_z(q[0])
+        T = T @ trans(0, 0.005375, -d2) @ rot_x(np.pi/2) @ rot_z(q[1])
+        T = T @ trans(0, -d3, -0.006375) @ rot_x(-np.pi/2) @ rot_z(q[2])
+        T = T @ trans(0, 0.006375, -d4) @ rot_x(np.pi/2) @ rot_z(q[3])
+        T = T @ trans(0, -d5, -0.006375) @ rot_x(-np.pi/2) @ rot_z(q[4])
+        T = T @ trans(0, 0.00017505, -d6) @ rot_x(np.pi/2) @ rot_z(q[5])
+        T = T @ trans(0, -d7, -0.00017505) @ rot_x(-np.pi/2) @ rot_z(q[6])
+        T = T @ trans(0, 0, -d_ee) @ rot_x(np.pi)
+
+        # 提取位置和姿态
+        pos = T[:3, 3]
+        rot_matrix = T[:3, :3]
+        quat = Rot.from_matrix(rot_matrix).as_quat()  # [qx, qy, qz, qw]
+
+        return np.concatenate([pos, quat])
 
     def set_safety_limits(self, max_linear: float = None, max_angular: float = None):
         """设置安全限制（保持原接口）"""
