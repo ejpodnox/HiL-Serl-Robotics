@@ -148,8 +148,21 @@ class TeleopDataRecorder:
 
                     # 6. 打印状态
                     if step % 50 == 0:
-                        print(f"  步数: {step:4d} | 时长: {time.time() - start_time:.1f}s | "
-                              f"手位置: [{position[0]:.3f}, {position[1]:.3f}, {position[2]:.3f}]")
+                        # 获取当前关节位置
+                        current_joints = self.robot_commander.current_joint_positions
+                        joints_str = "None"
+                        if current_joints is not None:
+                            joints_str = "[" + ", ".join([f"{j:.2f}" for j in current_joints]) + "]"
+
+                        # 运动方向（twist：线速度 + 角速度）
+                        twist_linear = twist[:3]
+                        twist_angular = twist[3:]
+
+                        print(f"  步数: {step:4d} | 时长: {time.time() - start_time:.1f}s")
+                        print(f"    手位置: [{position[0]:.3f}, {position[1]:.3f}, {position[2]:.3f}]")
+                        print(f"    关节角: {joints_str}")
+                        print(f"    期待速度: 线[{twist_linear[0]:.4f}, {twist_linear[1]:.4f}, {twist_linear[2]:.4f}] "
+                              f"角[{twist_angular[0]:.4f}, {twist_angular[1]:.4f}, {twist_angular[2]:.4f}]")
 
                     step += 1
 
