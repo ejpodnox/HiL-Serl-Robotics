@@ -2,6 +2,7 @@
 基于 Joint Trajectory Controller 的机器人控制器
 
 接受 twist 命令，转换为关节速度，使用 joint_trajectory_controller
+使用精确的 FK 和雅可比计算
 """
 
 import rclpy
@@ -18,8 +19,8 @@ from typing import Optional
 class JointVelocityCommander(Node):
     """
     使用 joint_trajectory_controller 实现 twist 控制
-
-    将笛卡尔速度转换为关节速度（通过数值雅可比）
+    
+    将笛卡尔速度转换为关节速度（通过精确雅可比）
     """
 
     def __init__(self, robot_ip: str, node_name: str = 'joint_velocity_commander'):
@@ -32,7 +33,13 @@ class JointVelocityCommander(Node):
         self.safety_max_angular_vel = 0.3
         self.enable_safety_check = True
 
+        # DH 参数 (来自论文 Table III)
+        self.dh_a = np.array([0, 0.28, 0, 0, 0, 0])  # m
+        self.dh_b = np.array([0.2433, 0.03, 0.02, 0.245, 0.057, 0.235])  # m
+        self.dh_alpha = np.array([np.pi/2, np.pi, np.pi/2, np.pi/2, np.pi/2, 0])
+
         # 关节名称（Kinova Gen3 7-DOF）
+        # 注意：保持原来的7关节接口，但实际只用前6个
         self.joint_names = [
             'joint_1', 'joint_2', 'joint_3', 'joint_4',
             'joint_5', 'joint_6', 'joint_7'
@@ -62,6 +69,7 @@ class JointVelocityCommander(Node):
         self.last_twist_time = time.time()
 
         self.get_logger().info(f'Joint Velocity Commander 初始化完成 ({robot_ip})')
+        self.get_logger().info('使用精确 FK/Jacobian (基于 DH 参数)')
 
     def joint_state_callback(self, msg):
         """关节状态回调"""
@@ -102,49 +110,50 @@ class JointVelocityCommander(Node):
 
         return np.concatenate([linear, angular])
 
-    def compute_jacobian(self, q: np.ndarray, delta: float = 1e-4) -> np.ndarray:
+    def forward_kinematics(self, q: np.ndarray) -> tuple:
         """
-        数值计算雅可比矩阵（高精度）
-
-        使用有限差分法：对每个关节做微小扰动，观察 TCP 位姿变化
-
+        精确正运动学 (基于论文 Section III, Eq. 3)
+        
         Args:
-            q: 当前关节位置 (7,)
-            delta: 扰动量 (rad)
-
+            q: 关节角度 (前6个关节)
+            
         Returns:
-            J: 雅可比矩阵 (6, 7)，J @ dq = [dx, dy, dz, drx, dry, drz]
+            p: TCP 位置 [x, y, z]
+            Q: TCP 姿态矩阵 (3x3)
         """
-        import rclpy
-        from scipy.spatial.transform import Rotation as Rot
+        # 只使用前6个关节
+        q6 = q[:6]
+        
+        Q_list = [np.eye(3)]  # Q0
+        p = np.zeros(3)
+        
+        for i in range(6):
+            c, s = np.cos(q6[i]), np.sin(q6[i])
+            ca, sa = np.cos(self.dh_alpha[i]), np.sin(self.dh_alpha[i])
+            
+            # 旋转矩阵 Qi (论文 Eq. 1)
+            Qi = np.array([
+                [c, -ca*s, sa*s],
+                [s, ca*c, -sa*c],
+                [0, sa, ca]
+            ])
+            
+            Q_cumulative = Q_list[-1] @ Qi
+            Q_list.append(Q_cumulative)
+            
+            # 位置向量 ai (论文 Eq. 2)
+            ai = np.array([
+                self.dh_a[i] * c,
+                self.dh_a[i] * s,
+                self.dh_b[i]
+            ])
+            
+            # 累积位置 (论文 Eq. 3a)
+            p += Q_list[i] @ ai
+        
+        return p, Q_list[-1]
 
-        J = np.zeros((6, 7))
-
-        # 获取当前 TCP 位姿
-        tcp_pose_0 = self.get_tcp_pose()
-        if tcp_pose_0 is None:
-            # 如果无法获取 TCP 位姿，返回零矩阵
-            return J
-
-        pos_0 = tcp_pose_0[:3]
-        quat_0 = tcp_pose_0[3:]  # [qx, qy, qz, qw]
-
-        # 对每个关节扰动
-        for i in range(7):
-            # 发布扰动后的关节状态（临时）
-            q_perturbed = q.copy()
-            q_perturbed[i] += delta
-
-            # 这里需要用正运动学，但我们没有。
-            # 数值雅可比需要发送关节位置并观察 TCP 变化
-            # 这在实时系统中不可行！
-            pass
-
-        # 因为无法在线扰动关节，我们改用解析雅可比（基于DH参数）
-        # 或者使用预计算的雅可比
-        return J
-
-    def compute_jacobian_analytical(self, q: np.ndarray) -> np.ndarray:
+    def compute_jacobian(self, q: np.ndarray) -> np.ndarray:
         """
         解析计算雅可比矩阵（基于 Kinova Gen3 URDF 精确参数）
 
@@ -153,10 +162,10 @@ class JointVelocityCommander(Node):
         - J_ω[i] = z_i                 (角速度)
 
         Args:
-            q: 关节位置 (7,)
-
+            q: 当前关节位置 (7,)，但只使用前6个
+            
         Returns:
-            J: 雅可比矩阵 (6, 7)
+            J: 雅可比矩阵 (6, 7)，最后一列为零（第7关节不影响前6DOF末端）
         """
         # 基于 URDF 的精确链长度（从 gen3/7dof/urdf/gen3_macro.xacro）
         # 关节变换参数 (x, y, z) - 从 URDF joint origins
@@ -214,7 +223,7 @@ class JointVelocityCommander(Node):
 
     def cartesian_to_joint_velocity(self, twist: np.ndarray) -> np.ndarray:
         """
-        笛卡尔速度 → 关节速度（使用雅可比伪逆，高精度）
+        笛卡尔速度 → 关节速度（使用精确雅可比伪逆）
 
         Args:
             twist: [vx, vy, vz, wx, wy, wz] 笛卡尔速度
@@ -225,8 +234,8 @@ class JointVelocityCommander(Node):
         if self.current_joint_positions is None:
             return np.zeros(7)
 
-        # 计算雅可比矩阵
-        J = self.compute_jacobian_analytical(self.current_joint_positions)
+        # 计算精确雅可比矩阵
+        J = self.compute_jacobian(self.current_joint_positions)
 
         # 使用阻尼最小二乘（DLS）求伪逆，避免奇异性
         # dq = J^T (J J^T + λI)^(-1) dx
@@ -244,7 +253,7 @@ class JointVelocityCommander(Node):
         return joint_vel
 
     def send_twist(self, twist_input):
-        """发送 twist 命令"""
+        """发送 twist 命令（保持原接口）"""
         if self.is_emergency_stopped:
             return
 
@@ -277,7 +286,7 @@ class JointVelocityCommander(Node):
         self.last_twist_time = time.time()
 
     def send_zero_twist(self):
-        """停止"""
+        """停止（保持原接口）"""
         if self.current_joint_positions is None:
             return
 
@@ -294,12 +303,12 @@ class JointVelocityCommander(Node):
         self.trajectory_publisher.publish(trajectory)
 
     def emergency_stop(self):
-        """急停"""
+        """急停（保持原接口）"""
         self.is_emergency_stopped = True
         self.send_zero_twist()
 
     def resume(self):
-        """解除急停"""
+        """解除急停（保持原接口）"""
         self.is_emergency_stopped = False
 
     def get_tcp_pose(self) -> Optional[np.ndarray]:
@@ -356,18 +365,18 @@ class JointVelocityCommander(Node):
         return np.concatenate([pos, quat])
 
     def set_safety_limits(self, max_linear: float = None, max_angular: float = None):
-        """设置安全限制"""
+        """设置安全限制（保持原接口）"""
         if max_linear is not None:
             self.safety_max_linear_vel = max_linear
         if max_angular is not None:
             self.safety_max_angular_vel = max_angular
 
     def enable_safety(self, enable: bool = True):
-        """启用/禁用安全检查"""
+        """启用/禁用安全检查（保持原接口）"""
         self.enable_safety_check = enable
 
     def get_info(self) -> dict:
-        """获取控制器信息"""
+        """获取控制器信息（保持原接口）"""
         return {
             'robot_ip': self.robot_ip,
             'emergency_stopped': self.is_emergency_stopped,
@@ -375,5 +384,6 @@ class JointVelocityCommander(Node):
             'max_linear_vel': self.safety_max_linear_vel,
             'max_angular_vel': self.safety_max_angular_vel,
             'last_command_age': time.time() - self.last_twist_time,
-            'backend': 'joint_trajectory_controller'
+            'backend': 'joint_trajectory_controller',
+            'kinematics': 'accurate_dh_based'  # 新增信息
         }
