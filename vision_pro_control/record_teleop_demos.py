@@ -186,21 +186,97 @@ class TeleopDataRecorder:
 
         return trajectory
 
+    def _compute_jacobian(self, q: np.ndarray) -> np.ndarray:
+        """
+        精确雅可比矩阵（基于 Kinova Gen3 7-DOF URDF）
+
+        使用几何雅可比：J = [J_v; J_ω]
+        - J_v[i] = z_i × (p_ee - p_i)  (线速度)
+        - J_ω[i] = z_i                 (角速度)
+
+        Args:
+            q: 关节位置 (7,)
+
+        Returns:
+            J: 雅可比矩阵 (6, 7)
+        """
+        # URDF 精确参数（gen3/7dof/urdf/gen3_macro.xacro）
+        d1 = 0.15643
+        d2 = 0.12838
+        d3 = 0.21038
+        d4 = 0.21038
+        d5 = 0.20843
+        d6 = 0.10593
+        d7 = 0.10593
+        d_ee = 0.061525
+
+        # 齐次变换矩阵工具函数
+        def rot_z(theta):
+            c, s = np.cos(theta), np.sin(theta)
+            return np.array([[c, -s, 0, 0], [s, c, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+
+        def rot_x(theta):
+            c, s = np.cos(theta), np.sin(theta)
+            return np.array([[1, 0, 0, 0], [0, c, -s, 0], [0, s, c, 0], [0, 0, 0, 1]])
+
+        def trans(x, y, z):
+            return np.array([[1, 0, 0, x], [0, 1, 0, y], [0, 0, 1, z], [0, 0, 0, 1]])
+
+        # 构建变换链
+        T0 = np.eye(4)
+        T1 = T0 @ trans(0, 0, d1) @ rot_x(np.pi) @ rot_z(q[0])
+        T2 = T1 @ trans(0, 0.005375, -d2) @ rot_x(np.pi/2) @ rot_z(q[1])
+        T3 = T2 @ trans(0, -d3, -0.006375) @ rot_x(-np.pi/2) @ rot_z(q[2])
+        T4 = T3 @ trans(0, 0.006375, -d4) @ rot_x(np.pi/2) @ rot_z(q[3])
+        T5 = T4 @ trans(0, -d5, -0.006375) @ rot_x(-np.pi/2) @ rot_z(q[4])
+        T6 = T5 @ trans(0, 0.00017505, -d6) @ rot_x(np.pi/2) @ rot_z(q[5])
+        T7 = T6 @ trans(0, -d7, -0.00017505) @ rot_x(-np.pi/2) @ rot_z(q[6])
+        T_ee = T7 @ trans(0, 0, -d_ee) @ rot_x(np.pi)
+
+        # 提取位置和旋转轴
+        p = [T0[:3, 3], T1[:3, 3], T2[:3, 3], T3[:3, 3],
+             T4[:3, 3], T5[:3, 3], T6[:3, 3], T7[:3, 3]]
+        p_ee = T_ee[:3, 3]
+
+        z = [T0[:3, 2], T1[:3, 2], T2[:3, 2], T3[:3, 2],
+             T4[:3, 2], T5[:3, 2], T6[:3, 2], T7[:3, 2]]
+
+        # 计算几何雅可比
+        J = np.zeros((6, 7))
+        for i in range(7):
+            J[:3, i] = np.cross(z[i], p_ee - p[i])  # 线速度
+            J[3:, i] = z[i]                          # 角速度
+
+        return J
+
     def _twist_to_joint_velocity(self, twist: np.ndarray) -> np.ndarray:
         """
-        Twist 转换为关节速度（简化版雅可比）
+        Twist → 关节速度（精确雅可比逆运动学）
 
         Args:
             twist: [vx, vy, vz, wx, wy, wz]
         Returns:
             joint_velocities: (7,)
         """
-        # 简化：直接映射前6个DOF，第7个关节设为0
-        # 实际应使用完整雅可比矩阵
-        joint_vel = np.zeros(7)
-        joint_vel[:6] = twist  # 简化映射
+        # 获取当前关节状态
+        joint_state = self.interface.get_joint_state()
+        if joint_state is None:
+            return np.zeros(7)
 
-        # 限制速度
+        q = joint_state[0]  # positions
+
+        # 计算精确雅可比
+        J = self._compute_jacobian(q)
+
+        # 阻尼最小二乘伪逆（DLS）避免奇异性
+        lambda_damping = 0.01
+        JJT = J @ J.T + lambda_damping * np.eye(6)
+        J_pinv = J.T @ np.linalg.inv(JJT)
+
+        # 计算关节速度
+        joint_vel = J_pinv @ twist
+
+        # 安全限制
         max_vel = 0.2  # rad/s
         joint_vel = np.clip(joint_vel, -max_vel, max_vel)
 
