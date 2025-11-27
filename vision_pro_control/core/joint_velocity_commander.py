@@ -247,7 +247,7 @@ class JointVelocityCommander(Node):
         joint_vel = J_pinv @ twist
 
         # 限制关节速度
-        max_joint_vel = 0.5  # rad/s
+        max_joint_vel = 0.2  # rad/s（降低以便测试更安全）
         joint_vel = np.clip(joint_vel, -max_joint_vel, max_joint_vel)
 
         return joint_vel
