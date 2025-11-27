@@ -13,6 +13,8 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from control_msgs.action import FollowJointTrajectory, GripperCommand
 import numpy as np
 import time
+import yaml
+from pathlib import Path
 from typing import Optional
 
 
@@ -23,15 +25,36 @@ class JointVelocityCommander(Node):
     将笛卡尔速度转换为关节速度（通过精确雅可比）
     """
 
-    def __init__(self, robot_ip: str, node_name: str = 'joint_velocity_commander'):
+    def __init__(self, robot_ip: str, node_name: str = 'joint_velocity_commander', config_file: Optional[str] = None):
         super().__init__(node_name)
 
         self.robot_ip = robot_ip
 
-        # 安全限制
-        self.safety_max_linear_vel = 0.1
-        self.safety_max_angular_vel = 0.3
-        self.enable_safety_check = True
+        # 加载配置参数（如果提供）
+        if config_file and Path(config_file).exists():
+            with open(config_file, 'r') as f:
+                config = yaml.safe_load(f)
+
+            safety_cfg = config.get('safety', {})
+            control_cfg = config.get('control', {})
+
+            self.safety_max_linear_vel = safety_cfg.get('max_linear_velocity', 0.1)
+            self.safety_max_angular_vel = safety_cfg.get('max_angular_velocity', 0.3)
+            self.enable_safety_check = safety_cfg.get('enable_safety_check', True)
+
+            self.max_joint_velocity = control_cfg.get('max_joint_velocity', 0.2)
+            self.jacobian_damping = control_cfg.get('jacobian_damping', 0.01)
+
+            self.get_logger().info(f'✓ 已从配置文件加载参数: {config_file}')
+        else:
+            # 使用默认参数
+            self.safety_max_linear_vel = 0.1
+            self.safety_max_angular_vel = 0.3
+            self.enable_safety_check = True
+            self.max_joint_velocity = 0.2
+            self.jacobian_damping = 0.01
+            if config_file:
+                self.get_logger().warn(f'配置文件不存在: {config_file}，使用默认参数')
 
         # DH 参数 (来自论文 Table III)
         self.dh_a = np.array([0, 0.28, 0, 0, 0, 0])  # m
@@ -255,16 +278,14 @@ class JointVelocityCommander(Node):
 
         # 使用阻尼最小二乘（DLS）求伪逆，避免奇异性
         # dq = J^T (J J^T + λI)^(-1) dx
-        lambda_damping = 0.01  # 阻尼系数
-        JJT = J @ J.T + lambda_damping * np.eye(6)
+        JJT = J @ J.T + self.jacobian_damping * np.eye(6)
         J_pinv = J.T @ np.linalg.inv(JJT)
 
         # 计算关节速度
         joint_vel = J_pinv @ twist
 
-        # 限制关节速度
-        max_joint_vel = 0.2  # rad/s（降低以便测试更安全）
-        joint_vel = np.clip(joint_vel, -max_joint_vel, max_joint_vel)
+        # 限制关节速度（从配置文件读取）
+        joint_vel = np.clip(joint_vel, -self.max_joint_velocity, self.max_joint_velocity)
 
         return joint_vel
 

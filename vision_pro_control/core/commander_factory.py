@@ -12,7 +12,8 @@ def robot_commander(
     backend: str = 'auto',
     node_name: str = 'robot_commander',
     username: str = 'admin',
-    password: str = 'admin'
+    password: str = 'admin',
+    config_file: Optional[str] = None
 ):
     """
     创建机器人控制器（自动选择或指定后端）
@@ -42,11 +43,11 @@ def robot_commander(
     if backend == 'auto':
         # 优先使用 joint（最可靠）
         from .joint_velocity_commander import JointVelocityCommander
-        return JointVelocityCommander(robot_ip=robot_ip, node_name=node_name)
+        return JointVelocityCommander(robot_ip=robot_ip, node_name=node_name, config_file=config_file)
 
     elif backend == 'joint':
         from .joint_velocity_commander import JointVelocityCommander
-        return JointVelocityCommander(robot_ip=robot_ip, node_name=node_name)
+        return JointVelocityCommander(robot_ip=robot_ip, node_name=node_name, config_file=config_file)
 
     elif backend == 'ros2':
         from .robot_commander import RobotCommander
@@ -67,7 +68,7 @@ def robot_commander(
         )
 
 
-def robot_commander_from_config(config: dict):
+def robot_commander_from_config(config: dict, config_file: Optional[str] = None):
     """
     从配置字典创建控制器
 
@@ -79,6 +80,7 @@ def robot_commander_from_config(config: dict):
                     'control_backend': 'auto'  # 可选
                 }
             }
+        config_file: 配置文件路径（可选），用于加载控制参数
 
     Returns:
         Commander 实例
@@ -87,4 +89,4 @@ def robot_commander_from_config(config: dict):
     robot_ip = robot_config.get('ip', '192.168.8.10')
     backend = robot_config.get('control_backend', 'auto')
 
-    return robot_commander(robot_ip=robot_ip, backend=backend)
+    return robot_commander(robot_ip=robot_ip, backend=backend, config_file=config_file)
