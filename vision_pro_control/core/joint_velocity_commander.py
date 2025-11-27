@@ -146,9 +146,11 @@ class JointVelocityCommander(Node):
 
     def compute_jacobian_analytical(self, q: np.ndarray) -> np.ndarray:
         """
-        解析计算雅可比矩阵（基于 Kinova Gen3 DH 参数）
+        解析计算雅可比矩阵（基于 Kinova Gen3 URDF 精确参数）
 
-        使用标准的雅可比计算方法
+        使用几何雅可比方法：J = [J_v; J_ω]
+        - J_v[i] = z_i × (p_ee - p_i)  (线速度)
+        - J_ω[i] = z_i                 (角速度)
 
         Args:
             q: 关节位置 (7,)
@@ -156,48 +158,57 @@ class JointVelocityCommander(Node):
         Returns:
             J: 雅可比矩阵 (6, 7)
         """
-        # Kinova Gen3 7-DOF 的 DH 参数（简化版本）
-        # 这里使用近似的解析雅可比
-        # 实际应该使用完整的 DH 参数和正运动学
+        # 基于 URDF 的精确链长度（从 gen3/7dof/urdf/gen3_macro.xacro）
+        # 关节变换参数 (x, y, z) - 从 URDF joint origins
+        d1 = 0.15643   # base to shoulder (z)
+        d2 = 0.12838   # shoulder to half_arm_1 (z)
+        d3 = 0.21038   # half_arm_1 to half_arm_2 (y)
+        d4 = 0.21038   # half_arm_2 to forearm (z)
+        d5 = 0.20843   # forearm to wrist_1 (y)
+        d6 = 0.10593   # wrist_1 to wrist_2 (z)
+        d7 = 0.10593   # wrist_2 to bracelet (y)
+        d_ee = 0.061525  # bracelet to end_effector (z)
 
-        # 简化：使用几何雅可比
-        # J_v = [z0 × (p7 - p0), z1 × (p7 - p1), ..., z6 × (p7 - p6)]
-        # J_ω = [z0, z1, ..., z6]
+        # 使用齐次变换矩阵计算正运动学
+        # 每个关节的局部变换（基于 URDF）
+        def rot_z(theta):
+            c, s = np.cos(theta), np.sin(theta)
+            return np.array([[c, -s, 0, 0], [s, c, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
 
-        # 这需要正运动学计算每个关节的位置和轴向
-        # 由于没有完整的 FK，我们使用一个基于经验的雅可比
+        def rot_x(theta):
+            c, s = np.cos(theta), np.sin(theta)
+            return np.array([[1, 0, 0, 0], [0, c, -s, 0], [0, s, c, 0], [0, 0, 0, 1]])
 
+        def trans(x, y, z):
+            return np.array([[1, 0, 0, x], [0, 1, 0, y], [0, 0, 1, z], [0, 0, 0, 1]])
+
+        # 构建变换链（从 base 到每个关节）
+        T0 = np.eye(4)  # base
+        T1 = T0 @ trans(0, 0, d1) @ rot_x(np.pi) @ rot_z(q[0])
+        T2 = T1 @ trans(0, 0.005375, -d2) @ rot_x(np.pi/2) @ rot_z(q[1])
+        T3 = T2 @ trans(0, -d3, -0.006375) @ rot_x(-np.pi/2) @ rot_z(q[2])
+        T4 = T3 @ trans(0, 0.006375, -d4) @ rot_x(np.pi/2) @ rot_z(q[3])
+        T5 = T4 @ trans(0, -d5, -0.006375) @ rot_x(-np.pi/2) @ rot_z(q[4])
+        T6 = T5 @ trans(0, 0.00017505, -d6) @ rot_x(np.pi/2) @ rot_z(q[5])
+        T7 = T6 @ trans(0, -d7, -0.00017505) @ rot_x(-np.pi/2) @ rot_z(q[6])
+        T_ee = T7 @ trans(0, 0, -d_ee) @ rot_x(np.pi)
+
+        # 提取各关节和末端的位置
+        p = [T0[:3, 3], T1[:3, 3], T2[:3, 3], T3[:3, 3],
+             T4[:3, 3], T5[:3, 3], T6[:3, 3], T7[:3, 3]]
+        p_ee = T_ee[:3, 3]
+
+        # 提取各关节的 z 轴方向（旋转轴）
+        z = [T0[:3, 2], T1[:3, 2], T2[:3, 2], T3[:3, 2],
+             T4[:3, 2], T5[:3, 2], T6[:3, 2], T7[:3, 2]]
+
+        # 计算几何雅可比
         J = np.zeros((6, 7))
-
-        # 基于 Kinova Gen3 的典型配置（近似）
-        # 链长度（米）
-        L1, L2, L3, L4 = 0.28, 0.21, 0.21, 0.18
-
-        # 简化的几何雅可比（基于典型姿态）
-        # 这是一个粗略估计，实际应该用完整的 FK/IK
-
-        c1, s1 = np.cos(q[0]), np.sin(q[0])
-        c2, s2 = np.cos(q[1]), np.sin(q[1])
-        c3, s3 = np.cos(q[2]), np.sin(q[2])
-
-        # 位置雅可比（前3行）
-        J[0, 0] = -L2 * s1 * s2 - L3 * s1 * np.sin(q[1] + q[2])
-        J[0, 1] = L2 * c1 * c2 + L3 * c1 * np.cos(q[1] + q[2])
-        J[0, 2] = L3 * c1 * np.cos(q[1] + q[2])
-
-        J[1, 0] = L2 * c1 * s2 + L3 * c1 * np.sin(q[1] + q[2])
-        J[1, 1] = L2 * s1 * c2 + L3 * s1 * np.cos(q[1] + q[2])
-        J[1, 2] = L3 * s1 * np.cos(q[1] + q[2])
-
-        J[2, 1] = -L2 * s2 - L3 * np.sin(q[1] + q[2])
-        J[2, 2] = -L3 * np.sin(q[1] + q[2])
-
-        # 姿态雅可比（后3行） - 关节轴方向
-        J[3:, 0] = [0, 0, 1]  # Joint 1: Z-axis
-        J[3:, 1] = [c1, s1, 0]  # Joint 2
-        J[3:, 2] = [c1, s1, 0]  # Joint 3
-        J[3:, 4] = [c1, s1, 0]  # Joint 5
-        J[3:, 6] = [c1, s1, 0]  # Joint 7
+        for i in range(7):
+            # 线速度部分：J_v[i] = z_i × (p_ee - p_i)
+            J[:3, i] = np.cross(z[i], p_ee - p[i])
+            # 角速度部分：J_ω[i] = z_i
+            J[3:, i] = z[i]
 
         return J
 
@@ -292,10 +303,57 @@ class JointVelocityCommander(Node):
         self.is_emergency_stopped = False
 
     def get_tcp_pose(self) -> Optional[np.ndarray]:
-        """获取 TCP 位姿（使用 TF，与 RobotCommander 相同）"""
-        # 简化版本：返回 None
-        # 实际应用中应使用 TF2 或正运动学
-        return None
+        """
+        获取 TCP 位姿（使用正运动学）
+
+        Returns:
+            pose: [x, y, z, qx, qy, qz, qw] 或 None
+        """
+        if self.current_joint_positions is None:
+            return None
+
+        from scipy.spatial.transform import Rotation as Rot
+
+        q = self.current_joint_positions
+
+        # 使用与雅可比相同的参数
+        d1 = 0.15643
+        d2 = 0.12838
+        d3 = 0.21038
+        d4 = 0.21038
+        d5 = 0.20843
+        d6 = 0.10593
+        d7 = 0.10593
+        d_ee = 0.061525
+
+        def rot_z(theta):
+            c, s = np.cos(theta), np.sin(theta)
+            return np.array([[c, -s, 0, 0], [s, c, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+
+        def rot_x(theta):
+            c, s = np.cos(theta), np.sin(theta)
+            return np.array([[1, 0, 0, 0], [0, c, -s, 0], [0, s, c, 0], [0, 0, 0, 1]])
+
+        def trans(x, y, z):
+            return np.array([[1, 0, 0, x], [0, 1, 0, y], [0, 0, 1, z], [0, 0, 0, 1]])
+
+        # 计算末端位姿
+        T = np.eye(4)
+        T = T @ trans(0, 0, d1) @ rot_x(np.pi) @ rot_z(q[0])
+        T = T @ trans(0, 0.005375, -d2) @ rot_x(np.pi/2) @ rot_z(q[1])
+        T = T @ trans(0, -d3, -0.006375) @ rot_x(-np.pi/2) @ rot_z(q[2])
+        T = T @ trans(0, 0.006375, -d4) @ rot_x(np.pi/2) @ rot_z(q[3])
+        T = T @ trans(0, -d5, -0.006375) @ rot_x(-np.pi/2) @ rot_z(q[4])
+        T = T @ trans(0, 0.00017505, -d6) @ rot_x(np.pi/2) @ rot_z(q[5])
+        T = T @ trans(0, -d7, -0.00017505) @ rot_x(-np.pi/2) @ rot_z(q[6])
+        T = T @ trans(0, 0, -d_ee) @ rot_x(np.pi)
+
+        # 提取位置和姿态
+        pos = T[:3, 3]
+        rot_matrix = T[:3, :3]
+        quat = Rot.from_matrix(rot_matrix).as_quat()  # [qx, qy, qz, qw]
+
+        return np.concatenate([pos, quat])
 
     def set_safety_limits(self, max_linear: float = None, max_angular: float = None):
         """设置安全限制"""
