@@ -47,7 +47,7 @@ class TeleopDataRecorder:
         )
 
         # 使用 KinovaInterface（已验证可用）
-        self.interface = KinovaInterface(robot_ip=self.config['robot']['ip'])
+        self.interface = KinovaInterface(node_name='teleop_recorder')
         self.interface.connect()
 
         # 等待关节状态数据
