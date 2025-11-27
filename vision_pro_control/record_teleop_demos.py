@@ -50,11 +50,14 @@ class TeleopDataRecorder:
             robot_ip=self.config['robot']['ip']
         )
 
-        # 等待 TF buffer 填充数据，需要 spin 让节点接收消息
-        print("  等待 TF buffer 准备...")
-        end_time = time.time() + 2.0
+        # 等待关节状态数据
+        print("  等待关节状态...")
+        end_time = time.time() + 3.0
         while time.time() < end_time:
             rclpy.spin_once(self.robot_commander, timeout_sec=0.1)
+            if self.robot_commander.current_joint_positions is not None:
+                print("  ✓ 关节状态已就绪")
+                break
 
         # 加载标定文件
         calibration_file = Path(__file__).parent / self.config['calibration']['file']
@@ -114,24 +117,27 @@ class TeleopDataRecorder:
                     break
 
                 try:
-                    # 1. 获取 VisionPro 数据
+                    # 1. Spin 节点接收关节状态
+                    rclpy.spin_once(self.robot_commander, timeout_sec=0.001)
+
+                    # 2. 获取 VisionPro 数据
                     position, rotation = self.vp_bridge.get_hand_relative_to_head()
                     pinch_distance = self.vp_bridge.get_pinch_distance()
 
-                    # 2. 映射到 Twist
+                    # 3. 映射到 Twist
                     twist = self.mapper.map_to_twist(position, rotation)
 
-                    # 3. 发送控制指令
+                    # 4. 发送控制指令
                     self.robot_commander.send_twist(twist)
 
-                    # 4. 控制夹爪
+                    # 5. 控制夹爪
                     gripper_position = self._pinch_to_gripper(pinch_distance)
                     self.robot_commander.control_gripper(
                         position=gripper_position,
                         max_effort=self.config['gripper']['max_effort']
                     )
 
-                    # 5. 记录数据
+                    # 6. 记录数据
                     data_point = {
                         'timestamp': time.time() - start_time,
                         'visionpro': {
@@ -146,28 +152,19 @@ class TeleopDataRecorder:
                     }
                     trajectory.append(data_point)
 
-                    # 6. 打印状态
+                    # 7. 打印状态（每秒一次）
                     if step % 50 == 0:
-                        # 获取当前关节位置
-                        current_joints = self.robot_commander.current_joint_positions
-                        joints_str = "None"
-                        if current_joints is not None:
-                            joints_str = "[" + ", ".join([f"{j:.2f}" for j in current_joints]) + "]"
+                        q = self.robot_commander.current_joint_positions
+                        vx = twist['linear']['x']
+                        vy = twist['linear']['y']
+                        vz = twist['linear']['z']
 
-                        # 运动方向（twist 是字典格式）
-                        if isinstance(twist, dict):
-                            twist_linear = [twist['linear']['x'], twist['linear']['y'], twist['linear']['z']]
-                            twist_angular = [twist['angular']['x'], twist['angular']['y'], twist['angular']['z']]
-                        else:
-                            # 如果是 numpy array
-                            twist_linear = twist[:3]
-                            twist_angular = twist[3:]
+                        print(f"  [{step:4d}] {time.time() - start_time:.1f}s | "
+                              f"手[{position[0]:.2f},{position[1]:.2f},{position[2]:.2f}] | "
+                              f"速度[{vx:.3f},{vy:.3f},{vz:.3f}]")
 
-                        print(f"  步数: {step:4d} | 时长: {time.time() - start_time:.1f}s")
-                        print(f"    手位置: [{position[0]:.3f}, {position[1]:.3f}, {position[2]:.3f}]")
-                        print(f"    关节角: {joints_str}")
-                        print(f"    期待速度: 线[{twist_linear[0]:.4f}, {twist_linear[1]:.4f}, {twist_linear[2]:.4f}] "
-                              f"角[{twist_angular[0]:.4f}, {twist_angular[1]:.4f}, {twist_angular[2]:.4f}]")
+                        if q is not None:
+                            print(f"        关节: " + " ".join([f"{j:5.2f}" for j in q]))
 
                     step += 1
 
