@@ -50,6 +50,10 @@ class TeleopDataRecorder:
         self.interface = KinovaInterface(node_name='teleop_recorder')
         self.interface.connect()
 
+        # 等待发布者被 ROS2 发现
+        print("  等待 ROS2 连接...")
+        time.sleep(0.5)
+
         # 等待关节状态数据
         print("  等待关节状态...")
         end_time = time.time() + 3.0
