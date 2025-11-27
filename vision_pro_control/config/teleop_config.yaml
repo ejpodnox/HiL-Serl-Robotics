@@ -24,6 +24,12 @@ mapper:
   # 注意：deadzone_radius 现在在 calibration.yaml 中定义
   # mapper 的速度限制是第一层保护，确保映射输出在合理范围
 
+# 控制参数
+control:
+  frequency: 20                # 控制频率 (Hz)
+  max_joint_velocity: 0.2      # 最大关节速度 (rad/s)
+  jacobian_damping: 0.01       # 雅可比阻尼参数（DLS伪逆）
+
 # 安全限制（双重保护机制）
 safety:
   max_linear_velocity: 0.005   # 最终安全限速 (m/s) - 第二层保护（降低用于测试）

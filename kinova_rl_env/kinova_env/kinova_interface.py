@@ -125,12 +125,13 @@ class KinovaInterface:
         velocites = self._latest_joint_state.velocity[:7]
         return np.array(positions),np.array(velocites)
     
-    def send_joint_velocities(self, velocities):
+    def send_joint_velocities(self, velocities, dt=0.05):
         """
         发送关节速度命令（使用 joint_trajectory_controller）
 
         Args:
             velocities: 7个关节的速度 (rad/s)
+            dt: 轨迹执行时间（秒），应匹配控制周期。默认 0.05s (20Hz)
         """
         if len(velocities) != 7:
             raise ValueError(f"需要7个速度，收到{len(velocities)}个")
@@ -148,7 +149,6 @@ class KinovaInterface:
         trajectory.joint_names = self.joint_names
 
         point = JointTrajectoryPoint()
-        dt = 0.1  # 100ms
         target_positions = current_positions + joint_velocities * dt
         point.positions = [float(x) for x in target_positions]
         point.velocities = [float(x) for x in joint_velocities]

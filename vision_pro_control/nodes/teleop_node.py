@@ -25,9 +25,12 @@ class TeleopNode(Node):
     
     def __init__(self, config_file: str):
         super().__init__('visionpro_teleop_node')
-        
+
         self.get_logger().info('初始化 VisionPro 遥操作节点（安全版）...')
-        
+
+        # 保存配置文件路径
+        self.config_file = config_file
+
         # 加载配置
         self.config = self.load_config(config_file)
         
@@ -89,7 +92,8 @@ class TeleopNode(Node):
     def init_robot_commander(self):
         """初始化机械臂控制器"""
         self.robot_commander = robot_commander(
-            robot_ip=self.config['robot']['ip']
+            robot_ip=self.config['robot']['ip'],
+            config_file=self.config_file
         )
 
         # 等待 TF buffer 填充数据，需要 spin 让节点接收消息
