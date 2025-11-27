@@ -148,7 +148,7 @@ class KinovaInterface:
         trajectory.joint_names = self.joint_names
 
         point = JointTrajectoryPoint()
-        dt = 0.1  # 100ms
+        dt = 0.02  # 20ms，匹配 50Hz 控制频率
         target_positions = current_positions + joint_velocities * dt
         point.positions = [float(x) for x in target_positions]
         point.velocities = [float(x) for x in joint_velocities]
