@@ -21,7 +21,7 @@ import yaml
 
 from vision_pro_control.core.visionpro_bridge import VisionProBridge
 from vision_pro_control.core.coordinate_mapper import CoordinateMapper
-from vision_pro_control.core import robot_commander
+from kinova_rl_env.kinova_env.kinova_interface import KinovaInterface
 from vision_pro_control.utils.keyboard_monitor import KeyboardMonitor
 
 
@@ -46,16 +46,16 @@ class TeleopDataRecorder:
             use_right_hand=self.config['visionpro']['use_right_hand']
         )
 
-        self.robot_commander = robot_commander(
-            robot_ip=self.config['robot']['ip']
-        )
+        # 使用 KinovaInterface（已验证可用）
+        self.interface = KinovaInterface(robot_ip=self.config['robot']['ip'])
+        self.interface.connect()
 
         # 等待关节状态数据
         print("  等待关节状态...")
         end_time = time.time() + 3.0
         while time.time() < end_time:
-            rclpy.spin_once(self.robot_commander, timeout_sec=0.1)
-            if self.robot_commander.current_joint_positions is not None:
+            rclpy.spin_once(self.interface.node, timeout_sec=0.1)
+            if self.interface.get_joint_state() is not None:
                 print("  ✓ 关节状态已就绪")
                 break
 
@@ -117,25 +117,27 @@ class TeleopDataRecorder:
                     break
 
                 try:
-                    # 1. Spin 节点接收关节状态
-                    rclpy.spin_once(self.robot_commander, timeout_sec=0.001)
+                    # 1. Spin 接收关节状态
+                    rclpy.spin_once(self.interface.node, timeout_sec=0.001)
 
                     # 2. 获取 VisionPro 数据
                     position, rotation = self.vp_bridge.get_hand_relative_to_head()
                     pinch_distance = self.vp_bridge.get_pinch_distance()
 
-                    # 3. 映射到 Twist
+                    # 3. 映射到 Twist（字典格式）
                     twist = self.mapper.map_to_twist(position, rotation)
 
-                    # 4. 发送控制指令
-                    self.robot_commander.send_twist(twist)
+                    # 4. 转换为关节速度并发送
+                    twist_array = np.array([
+                        twist['linear']['x'], twist['linear']['y'], twist['linear']['z'],
+                        twist['angular']['x'], twist['angular']['y'], twist['angular']['z']
+                    ])
+                    joint_velocities = self._twist_to_joint_velocity(twist_array)
+                    self.interface.send_joint_velocities(joint_velocities.tolist())
 
-                    # 5. 控制夹爪
+                    # 4. 控制夹爪
                     gripper_position = self._pinch_to_gripper(pinch_distance)
-                    self.robot_commander.control_gripper(
-                        position=gripper_position,
-                        max_effort=self.config['gripper']['max_effort']
-                    )
+                    self.interface.send_gripper_command(gripper_position)
 
                     # 6. 记录数据
                     data_point = {
@@ -152,9 +154,10 @@ class TeleopDataRecorder:
                     }
                     trajectory.append(data_point)
 
-                    # 7. 打印状态（每秒一次）
+                    # 5. 打印状态（每秒一次）
                     if step % 50 == 0:
-                        q = self.robot_commander.current_joint_positions
+                        joint_state = self.interface.get_joint_state()
+                        q = joint_state['positions'] if joint_state else None
                         vx = twist['linear']['x']
                         vy = twist['linear']['y']
                         vz = twist['linear']['z']
@@ -164,7 +167,7 @@ class TeleopDataRecorder:
                               f"速度[{vx:.3f},{vy:.3f},{vz:.3f}]")
 
                         if q is not None:
-                            print(f"        关节: " + " ".join([f"{j:5.2f}" for j in q]))
+                            print(f"        关节: " + " ".join([f"{j:5.2f}" for j in q[:7]]))
 
                     step += 1
 
@@ -178,6 +181,26 @@ class TeleopDataRecorder:
                 time.sleep(sleep_time)
 
         return trajectory
+
+    def _twist_to_joint_velocity(self, twist: np.ndarray) -> np.ndarray:
+        """
+        Twist 转换为关节速度（简化版雅可比）
+
+        Args:
+            twist: [vx, vy, vz, wx, wy, wz]
+        Returns:
+            joint_velocities: (7,)
+        """
+        # 简化：直接映射前6个DOF，第7个关节设为0
+        # 实际应使用完整雅可比矩阵
+        joint_vel = np.zeros(7)
+        joint_vel[:6] = twist  # 简化映射
+
+        # 限制速度
+        max_vel = 0.2  # rad/s
+        joint_vel = np.clip(joint_vel, -max_vel, max_vel)
+
+        return joint_vel
 
     def _pinch_to_gripper(self, pinch_distance: float) -> float:
         """
@@ -219,7 +242,8 @@ class TeleopDataRecorder:
     def stop(self):
         """停止所有组件"""
         self.vp_bridge.stop()
-        self.robot_commander.send_zero_twist()
+        self.interface.send_joint_velocities([0.0] * 7)
+        self.interface.disconnect()
         rclpy.shutdown()
         print("✓ 已停止所有组件")
 
