@@ -10,7 +10,7 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
-from control_msgs.action import FollowJointTrajectory
+from control_msgs.action import FollowJointTrajectory, GripperCommand
 import numpy as np
 import time
 from typing import Optional
@@ -63,6 +63,22 @@ class JointVelocityCommander(Node):
             '/joint_trajectory_controller/joint_trajectory',
             10
         )
+
+        # 创建夹爪 Action 客户端
+        self.gripper_action_client = ActionClient(
+            self,
+            GripperCommand,
+            '/robotiq_gripper_controller/gripper_cmd'
+        )
+
+        # 检查夹爪服务器是否可用
+        self.gripper_available = False
+        self.get_logger().info('检查夹爪 Action 服务器...')
+        if self.gripper_action_client.wait_for_server(timeout_sec=2.0):
+            self.gripper_available = True
+            self.get_logger().info('✓ 夹爪控制器可用')
+        else:
+            self.get_logger().warn('✗ 夹爪 Action 服务器不可用（将跳过夹爪控制）')
 
         # 状态
         self.is_emergency_stopped = False
@@ -387,3 +403,27 @@ class JointVelocityCommander(Node):
             'backend': 'joint_trajectory_controller',
             'kinematics': 'accurate_dh_based'  # 新增信息
         }
+
+    def control_gripper(self, position: float, max_effort: float = 100.0):
+        """
+        控制夹爪
+
+        Args:
+            position: 夹爪位置，0.0=完全张开，0.8=完全闭合
+            max_effort: 最大力度 (0-100)
+        """
+        # 如果夹爪不可用，直接返回（不再重复报错）
+        if not self.gripper_available:
+            return
+
+        if not self.gripper_action_client:
+            self.get_logger().warn('夹爪 Action 客户端未初始化')
+            return
+
+        goal = GripperCommand.Goal()
+        goal.command.position = position
+        goal.command.max_effort = max_effort
+
+        future = self.gripper_action_client.send_goal_async(goal)
+
+        self.get_logger().debug(f'夹爪指令已发送: position={position:.2f}')
