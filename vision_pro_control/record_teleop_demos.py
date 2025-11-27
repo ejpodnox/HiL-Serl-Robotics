@@ -91,8 +91,8 @@ class TeleopDataRecorder:
         )
 
         # 控制频率
-        self.control_frequency = 50  # Hz
-        self.dt = 1.0 / self.control_frequency
+        self.control_frequency = 20  # Hz
+        self.dt = 1.0 / self.control_frequency  # 0.05s
 
         print("✓ 遥操作记录器初始化完成")
 
@@ -137,7 +137,7 @@ class TeleopDataRecorder:
                         twist['angular']['x'], twist['angular']['y'], twist['angular']['z']
                     ])
                     joint_velocities = self._twist_to_joint_velocity(twist_array)
-                    self.interface.send_joint_velocities(joint_velocities.tolist())
+                    self.interface.send_joint_velocities(joint_velocities.tolist(), dt=self.dt)
 
                     # 4. 控制夹爪
                     gripper_position = self._pinch_to_gripper(pinch_distance)
@@ -159,7 +159,7 @@ class TeleopDataRecorder:
                     trajectory.append(data_point)
 
                     # 5. 打印状态（每秒一次）
-                    if step % 50 == 0:
+                    if step % 20 == 0:
                         joint_state = self.interface.get_joint_state()
                         q = joint_state[0] if joint_state else None  # 元组的第一个元素是 positions
                         vx = twist['linear']['x']
