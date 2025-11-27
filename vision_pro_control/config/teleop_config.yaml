@@ -17,8 +17,8 @@ calibration:
 mapper:
   position_gain: 0.3          # 位置增益（提高到0.8以适应球形空间）
   rotation_gain: 0.3          # 旋转增益
-  max_linear_velocity: 0.02    # Mapper内部最大线速度 (m/s) - 第一层限制
-  max_angular_velocity: 0.1   # Mapper内部最大角速度 (rad/s) - 第一层限制
+  max_linear_velocity: 0.01    # Mapper内部最大线速度 (m/s) - 第一层限制
+  max_angular_velocity: 0.05   # Mapper内部最大角速度 (rad/s) - 第一层限制
   filter_alpha: 0.2           # 滤波系数 (0-1)
 
   # 注意：deadzone_radius 现在在 calibration.yaml 中定义
@@ -26,8 +26,8 @@ mapper:
 
 # 安全限制（双重保护机制）
 safety:
-  max_linear_velocity: 0.01    # 最终安全限速 (m/s) - 第二层保护
-  max_angular_velocity: 0.05   # 最终安全角速度限制 (rad/s) - 第二层保护
+  max_linear_velocity: 0.005   # 最终安全限速 (m/s) - 第二层保护（降低用于测试）
+  max_angular_velocity: 0.03   # 最终安全角速度限制 (rad/s) - 第二层保护（降低用于测试）
   enable_safety_check: true   # 启用安全检查
 
   # 说明：双重安全保护机制
