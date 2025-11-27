@@ -90,11 +90,16 @@ class TeleopDataRecorder:
             max_angular=mapper_cfg['max_angular_velocity']
         )
 
-        # 控制频率
-        self.control_frequency = 20  # Hz
-        self.dt = 1.0 / self.control_frequency  # 0.05s
+        # 控制参数（从配置文件读取）
+        control_cfg = self.config['control']
+        self.control_frequency = control_cfg['frequency']  # Hz
+        self.dt = 1.0 / self.control_frequency
+        self.max_joint_velocity = control_cfg['max_joint_velocity']  # rad/s
+        self.jacobian_damping = control_cfg['jacobian_damping']
 
         print("✓ 遥操作记录器初始化完成")
+        print(f"  控制频率: {self.control_frequency} Hz (dt={self.dt:.3f}s)")
+        print(f"  最大关节速度: {self.max_joint_velocity} rad/s")
 
     def record_trajectory(self):
         """
@@ -159,7 +164,7 @@ class TeleopDataRecorder:
                     trajectory.append(data_point)
 
                     # 5. 打印状态（每秒一次）
-                    if step % 20 == 0:
+                    if step % self.control_frequency == 0:
                         joint_state = self.interface.get_joint_state()
                         q = joint_state[0] if joint_state else None  # 元组的第一个元素是 positions
                         vx = twist['linear']['x']
@@ -269,16 +274,14 @@ class TeleopDataRecorder:
         J = self._compute_jacobian(q)
 
         # 阻尼最小二乘伪逆（DLS）避免奇异性
-        lambda_damping = 0.01
-        JJT = J @ J.T + lambda_damping * np.eye(6)
+        JJT = J @ J.T + self.jacobian_damping * np.eye(6)
         J_pinv = J.T @ np.linalg.inv(JJT)
 
         # 计算关节速度
         joint_vel = J_pinv @ twist
 
-        # 安全限制
-        max_vel = 0.2  # rad/s
-        joint_vel = np.clip(joint_vel, -max_vel, max_vel)
+        # 安全限制（从配置文件读取）
+        joint_vel = np.clip(joint_vel, -self.max_joint_velocity, self.max_joint_velocity)
 
         return joint_vel
 
