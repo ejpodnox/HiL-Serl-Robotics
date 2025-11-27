@@ -47,8 +47,12 @@ class TeleopDataRecorder:
         )
 
         # 使用 KinovaInterface（已验证可用）
-        self.interface = KinovaInterface(robot_ip=self.config['robot']['ip'])
+        self.interface = KinovaInterface(node_name='teleop_recorder')
         self.interface.connect()
+
+        # 等待发布者被 ROS2 发现
+        print("  等待 ROS2 连接...")
+        time.sleep(0.5)
 
         # 等待关节状态数据
         print("  等待关节状态...")
