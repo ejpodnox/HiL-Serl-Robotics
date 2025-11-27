@@ -50,7 +50,14 @@ class TeleopDataRecorder:
         self.interface = KinovaInterface(robot_ip=self.config['robot']['ip'])
         self.interface.connect()
 
-        print("  ✓ 机械臂接口已连接")
+        # 等待关节状态数据
+        print("  等待关节状态...")
+        end_time = time.time() + 3.0
+        while time.time() < end_time:
+            rclpy.spin_once(self.interface.node, timeout_sec=0.1)
+            if self.interface.get_joint_state() is not None:
+                print("  ✓ 关节状态已就绪")
+                break
 
         # 加载标定文件
         calibration_file = Path(__file__).parent / self.config['calibration']['file']
@@ -110,14 +117,17 @@ class TeleopDataRecorder:
                     break
 
                 try:
-                    # 1. 获取 VisionPro 数据
+                    # 1. Spin 接收关节状态
+                    rclpy.spin_once(self.interface.node, timeout_sec=0.001)
+
+                    # 2. 获取 VisionPro 数据
                     position, rotation = self.vp_bridge.get_hand_relative_to_head()
                     pinch_distance = self.vp_bridge.get_pinch_distance()
 
-                    # 2. 映射到 Twist（字典格式）
+                    # 3. 映射到 Twist（字典格式）
                     twist = self.mapper.map_to_twist(position, rotation)
 
-                    # 3. 转换为关节速度并发送
+                    # 4. 转换为关节速度并发送
                     twist_array = np.array([
                         twist['linear']['x'], twist['linear']['y'], twist['linear']['z'],
                         twist['angular']['x'], twist['angular']['y'], twist['angular']['z']
