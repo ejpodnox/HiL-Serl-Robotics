@@ -154,9 +154,14 @@ class TeleopDataRecorder:
                         if current_joints is not None:
                             joints_str = "[" + ", ".join([f"{j:.2f}" for j in current_joints]) + "]"
 
-                        # 运动方向（twist：线速度 + 角速度）
-                        twist_linear = twist[:3]
-                        twist_angular = twist[3:]
+                        # 运动方向（twist 是字典格式）
+                        if isinstance(twist, dict):
+                            twist_linear = [twist['linear']['x'], twist['linear']['y'], twist['linear']['z']]
+                            twist_angular = [twist['angular']['x'], twist['angular']['y'], twist['angular']['z']]
+                        else:
+                            # 如果是 numpy array
+                            twist_linear = twist[:3]
+                            twist_angular = twist[3:]
 
                         print(f"  步数: {step:4d} | 时长: {time.time() - start_time:.1f}s")
                         print(f"    手位置: [{position[0]:.3f}, {position[1]:.3f}, {position[2]:.3f}]")
