@@ -219,9 +219,8 @@ class GripperTester:
         self.interface.send_gripper_command(0.0)
         time.sleep(0.5)
 
-        # 断开连接
+        # 断开连接（内部已调用rclpy.shutdown()）
         self.interface.disconnect()
-        rclpy.shutdown()
         print("✓ 已清理资源")
 
 
