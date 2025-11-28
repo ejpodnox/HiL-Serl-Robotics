@@ -119,32 +119,11 @@ class DebugTeleopRecorder:
             traceback.print_exc()
             raise
 
-        # 标定
+        # 标定文件路径
         self.calibration_file = Path(__file__).parent.parent / 'vision_pro_control' / self.config['calibration']['file']
-        self._run_calibration()
 
-        # 加载 Mapper
-        try:
-            self.mapper = CoordinateMapper(calibration_file=self.calibration_file)
-
-            mapper_cfg = self.config['mapper']
-            self.mapper.set_gains(
-                position_gain=mapper_cfg['position_gain'],
-                rotation_gain=mapper_cfg['rotation_gain']
-            )
-            self.mapper.set_velocity_limits(
-                max_linear=mapper_cfg['max_linear_velocity'],
-                max_angular=mapper_cfg['max_angular_velocity']
-            )
-
-            print_success("CoordinateMapper 初始化成功")
-            print_info(f"  位置增益: {mapper_cfg['position_gain']}")
-            print_info(f"  最大线速度: {mapper_cfg['max_linear_velocity']} m/s")
-
-        except Exception as e:
-            print_error(f"CoordinateMapper 初始化失败: {e}")
-            traceback.print_exc()
-            raise
+        # 注意：标定需要在 start() 之后进行，这里先不标定
+        self.mapper = None
 
         # 控制参数
         control_cfg = self.config['control']
@@ -153,9 +132,10 @@ class DebugTeleopRecorder:
         self.max_joint_velocity = control_cfg['max_joint_velocity']
         self.jacobian_damping = control_cfg['jacobian_damping']
 
-        print_success("初始化完成")
+        print_success("基础初始化完成")
         print_info(f"控制频率: {self.control_frequency} Hz (dt={self.dt:.3f}s)")
         print_info(f"最大关节速度: {self.max_joint_velocity} rad/s")
+        print_warning("注意：需要调用 start() 启动VisionPro并执行标定")
 
         # 统计数据
         self.stats = {
@@ -483,13 +463,48 @@ class DebugTeleopRecorder:
             print(f"  错误率: {error_rate:.1f}%")
 
     def start(self):
-        """启动 VisionPro"""
+        """启动 VisionPro 并执行标定"""
         try:
+            # 1. 启动VisionPro数据流
             self.vp_bridge.start()
-            time.sleep(1.0)
             print_success("VisionPro 数据流已启动")
+
+            # 2. 等待数据稳定
+            print_info("等待VisionPro数据稳定...")
+            time.sleep(3.0)
+
+            # 3. 验证数据
+            test_pos, _ = self.vp_bridge.get_hand_relative_to_head()
+            print_info(f"VisionPro数据测试: {test_pos}")
+
+            if np.allclose(test_pos, 0):
+                print_error("VisionPro数据全是0！")
+                print_warning("可能原因：")
+                print("  1. VisionPro应用未运行")
+                print("  2. 网络连接问题")
+                print("  3. IP地址错误")
+                raise RuntimeError("VisionPro数据不可用")
+            else:
+                print_success("VisionPro数据正常")
+
+            # 4. 执行标定
+            self._run_calibration()
+
+            # 5. 加载Mapper
+            mapper_cfg = self.config['mapper']
+            self.mapper = CoordinateMapper(calibration_file=self.calibration_file)
+            self.mapper.set_gains(
+                position_gain=mapper_cfg['position_gain'],
+                rotation_gain=mapper_cfg['rotation_gain']
+            )
+            self.mapper.set_velocity_limits(
+                max_linear=mapper_cfg['max_linear_velocity'],
+                max_angular=mapper_cfg['max_angular_velocity']
+            )
+            print_success("CoordinateMapper 初始化成功")
+
         except Exception as e:
-            print_error(f"VisionPro 启动失败: {e}")
+            print_error(f"启动失败: {e}")
             raise
 
     def stop(self):
