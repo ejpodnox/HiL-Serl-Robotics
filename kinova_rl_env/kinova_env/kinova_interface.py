@@ -7,12 +7,14 @@ KinovaInterface: ROS2通信层
 import rclpy
 from rclpy.node import Node
 from rclpy.duration import Duration
+from rclpy.action import ActionClient
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 import numpy as np
 from std_msgs.msg import Float64
 from sensor_msgs.msg import Image
 import cv2
+from control_msgs.action import GripperCommand
 
 # TF2用于获取TCP位姿
 from tf2_ros import Buffer, TransformListener, LookupException, ConnectivityException, ExtrapolationException
@@ -45,8 +47,10 @@ class KinovaInterface:
             'joint_5', 'joint_6', 'joint_7'
         ]
 
-        self.gripper_command_topic = '/gripper_controller/gripper_cmd'
+        self.gripper_command_topic = '/robotiq_gripper_controller/gripper_cmd'
         self._gripper_state = 0.0  # 缓存gripper位置
+        self._gripper_action_client = None
+        self.gripper_available = False
 
         # TF2配置
         self.base_frame = 'base_link'  # 基座坐标系
@@ -83,12 +87,20 @@ class KinovaInterface:
             10
         )
 
-        # 发布gripper命令
-        self._gripper_pub = self.node.create_publisher(
-            Float64,
-            self.gripper_command_topic,
-            10
+        # 创建夹爪Action客户端
+        self._gripper_action_client = ActionClient(
+            self.node,
+            GripperCommand,
+            self.gripper_command_topic
         )
+
+        # 检查夹爪服务器是否可用
+        if self._gripper_action_client.wait_for_server(timeout_sec=2.0):
+            self.gripper_available = True
+            self.node.get_logger().info(f"✓ 夹爪Action服务器已连接: {self.gripper_command_topic}")
+        else:
+            self.gripper_available = False
+            self.node.get_logger().warn(f"⚠️  夹爪Action服务器未响应: {self.gripper_command_topic}")
 
         # 初始化TF2监听器
         self._tf_buffer = Buffer()
@@ -276,21 +288,32 @@ class KinovaInterface:
         """
         return self._gripper_state
 
-    def send_gripper_command(self, position):
+    def send_gripper_command(self, position, max_effort=100.0):
         """
-        发送gripper命令
+        发送gripper命令（使用Action接口）
 
         Args:
-            position: float, 0.0(全开) 到 1.0(全闭)
+            position: float, 0.0(全开) 到 0.8(全闭) - Robotiq夹爪的标准范围
+            max_effort: float, 最大力度 (0-100)
         """
-        position = np.clip(position, 0.0, 1.0)
+        # Robotiq夹爪：0.0=完全打开，0.8=完全闭合
+        # 输入范围 [0, 1] 映射到 [0, 0.8]
+        position = np.clip(position * 0.8, 0.0, 0.8)
 
-        msg = Float64()
-        msg.data = float(position)
-        self._gripper_pub.publish(msg)
+        if not self.gripper_available:
+            self.node.get_logger().warn("夹爪不可用，命令未发送")
+            return
+
+        # 创建夹爪命令
+        goal = GripperCommand.Goal()
+        goal.command.position = float(position)
+        goal.command.max_effort = float(max_effort)
+
+        # 异步发送命令（不等待完成）
+        self._gripper_action_client.send_goal_async(goal)
 
         # 更新缓存
-        self._gripper_state = position
+        self._gripper_state = position / 0.8  # 转换回 [0, 1] 范围
 
 
 # ============ 使用示例 ============
