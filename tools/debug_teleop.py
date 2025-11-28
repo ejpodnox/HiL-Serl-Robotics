@@ -220,8 +220,8 @@ class DebugTeleopRecorder:
         start_time = time.time()
         step = 0
 
-        # 安全限制
-        velocity_limit = self.config['robot']['joint_limits']['velocity_max']
+        # 安全限制（使用控制配置中的最大速度）
+        velocity_limit = [self.max_joint_velocity] * 7
 
         try:
             with KeyboardMonitor() as kb:
@@ -513,7 +513,7 @@ class DebugTeleopRecorder:
             self.vp_bridge.stop()
             self.interface.send_joint_velocities([0.0] * 7)
             self.interface.disconnect()
-            rclpy.shutdown()
+            # disconnect() 已经调用了 rclpy.shutdown()，不要重复调用
             print_success("已停止所有组件")
         except Exception as e:
             print_error(f"停止组件时出错: {e}")
