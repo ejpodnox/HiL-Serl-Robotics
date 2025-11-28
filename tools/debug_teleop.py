@@ -74,6 +74,30 @@ class DebugTeleopRecorder:
             self.config = yaml.safe_load(f)
         print_success(f"加载配置文件: {config_file}")
 
+        # 【修复1：加载完整的机器人配置，获取真实关节限制】
+        print_info("加载机器人配置...")
+        try:
+            from kinova_rl_env.kinova_env.config_loader import KinovaConfig
+            kinova_config_path = Path(__file__).parent.parent / 'kinova_rl_env/config/kinova_config.yaml'
+            self.kinova_config = KinovaConfig.from_yaml(str(kinova_config_path))
+
+            # 获取真实的关节限制
+            self.joint_velocity_limits = np.array(self.kinova_config.robot.joint_limits.velocity_max)
+            self.joint_position_min = np.array(self.kinova_config.robot.joint_limits.position_min)
+            self.joint_position_max = np.array(self.kinova_config.robot.joint_limits.position_max)
+
+            print_success("机器人配置加载成功")
+            print_info(f"  关节速度限制: {self.joint_velocity_limits}")
+            print_info(f"  位置范围: [{self.joint_position_min[0]:.2f}, {self.joint_position_max[0]:.2f}] rad")
+
+        except Exception as e:
+            print_warning(f"无法加载机器人配置: {e}")
+            print_warning("使用默认限制")
+            # 使用Kinova Gen3的默认限制
+            self.joint_velocity_limits = np.array([1.3, 1.3, 1.3, 1.3, 1.2, 1.2, 1.2])
+            self.joint_position_min = np.array([-3.14, -2.41, -3.14, -2.66, -3.14, -2.23, -3.14])
+            self.joint_position_max = np.array([3.14, 2.41, 3.14, 2.66, 3.14, 2.23, 3.14])
+
         # 初始化 ROS2
         try:
             rclpy.init()
@@ -137,6 +161,14 @@ class DebugTeleopRecorder:
         print_info(f"最大关节速度: {self.max_joint_velocity} rad/s")
         print_warning("注意：需要调用 start() 启动VisionPro并执行标定")
 
+        # 【修复4：速度平滑 - 初始化状态】
+        self.last_joint_velocities = np.zeros(7)
+        self.max_acceleration = 1.0  # rad/s² - 最大加速度
+
+        # 【修复3：启动保护】
+        self.startup_steps = 100  # 前100步（5秒）使用启动保护
+        self.startup_scale = 0.2  # 启动期间速度缩放到20%
+
         # 统计数据
         self.stats = {
             'iterations': 0,
@@ -144,6 +176,8 @@ class DebugTeleopRecorder:
             'warnings': 0,
             'max_joint_vel': 0.0,
             'max_linear_vel': 0.0,
+            'max_cond_number': 0.0,  # 最大条件数
+            'singularity_warnings': 0,  # 奇异性警告次数
         }
 
     def _run_calibration(self):
@@ -220,8 +254,8 @@ class DebugTeleopRecorder:
         start_time = time.time()
         step = 0
 
-        # 安全限制（使用控制配置中的最大速度）
-        velocity_limit = [self.max_joint_velocity] * 7
+        # 使用真实的关节速度限制（机器人硬件限制）
+        velocity_limit = self.joint_velocity_limits
 
         try:
             with KeyboardMonitor() as kb:
@@ -248,6 +282,14 @@ class DebugTeleopRecorder:
 
                         q, q_dot = joint_state
                         current_max_vel = np.max(np.abs(q_dot))
+
+                        # 检查是否接近关节极限
+                        for i in range(7):
+                            margin_min = q[i] - self.joint_position_min[i]
+                            margin_max = self.joint_position_max[i] - q[i]
+                            if margin_min < 0.3 or margin_max < 0.3:
+                                print_warning(f"[{step:4d}] 关节{i+1}接近极限！pos={q[i]:.2f}, 余量=({margin_min:.2f}, {margin_max:.2f})")
+                                self.stats['warnings'] += 1
 
                         # ===== 3. 获取 VisionPro 数据 =====
                         try:
@@ -280,6 +322,29 @@ class DebugTeleopRecorder:
                         # ===== 5. 转换为关节速度 =====
                         try:
                             joint_velocities = self._twist_to_joint_velocity(twist_array, q)
+
+                            # 【修复4：速度平滑 - 限制加速度】
+                            max_delta = self.max_acceleration * self.dt  # 单步最大速度变化
+                            delta = joint_velocities - self.last_joint_velocities
+
+                            # 检查是否有过大的加速度
+                            if np.max(np.abs(delta)) > max_delta:
+                                print_warning(f"[{step:4d}] 加速度过大，平滑处理: max_delta={np.max(np.abs(delta)):.3f}")
+
+                            # 限制加速度变化
+                            delta = np.clip(delta, -max_delta, max_delta)
+                            joint_velocities = self.last_joint_velocities + delta
+
+                            # 【修复3：启动保护 - 前N步降低速度】
+                            if step < self.startup_steps:
+                                scale = self.startup_scale + (1.0 - self.startup_scale) * (step / self.startup_steps)
+                                joint_velocities *= scale
+                                if step % 20 == 0:
+                                    print_info(f"[{step:4d}] 启动保护中，速度缩放: {scale:.2f}")
+
+                            # 更新上次速度
+                            self.last_joint_velocities = joint_velocities.copy()
+
                             commanded_max_vel = np.max(np.abs(joint_velocities))
                             self.stats['max_joint_vel'] = max(self.stats['max_joint_vel'], commanded_max_vel)
 
@@ -290,10 +355,14 @@ class DebugTeleopRecorder:
                             time.sleep(self.dt)
                             continue
 
-                        # ===== 6. 安全检查 =====
+                        # ===== 6. 安全检查（使用真实硬件限制）=====
                         safety_ok = True
                         for i, (vel, limit) in enumerate(zip(joint_velocities, velocity_limit)):
-                            if abs(vel) > limit:
+                            if abs(vel) > limit * 0.9:  # 接近限制的90%就警告
+                                print_warning(f"[{step:4d}] 关节{i+1} 速度接近限制: {vel:.3f} / {limit:.3f} rad/s")
+                                self.stats['warnings'] += 1
+
+                            if abs(vel) > limit:  # 超过限制
                                 print_error(f"[{step:4d}] 关节{i+1} 速度超限: {vel:.3f} > {limit:.3f} rad/s")
                                 safety_ok = False
                                 self.stats['warnings'] += 1
@@ -363,18 +432,43 @@ class DebugTeleopRecorder:
             self._print_statistics()
 
     def _twist_to_joint_velocity(self, twist: np.ndarray, q: np.ndarray) -> np.ndarray:
-        """Twist → 关节速度（使用雅可比）"""
+        """
+        Twist → 关节速度（使用雅可比）
+
+        包含奇异性检查和安全限制
+        """
         # 计算雅可比矩阵
         J = self._compute_jacobian(q)
 
-        # DLS 伪逆
-        JJT = J @ J.T + self.jacobian_damping * np.eye(6)
+        # 【修复2：奇异性检查】
+        try:
+            cond_number = np.linalg.cond(J)
+            self.stats['max_cond_number'] = max(self.stats['max_cond_number'], cond_number)
+
+            # 条件数过高 = 接近奇异点
+            if cond_number > 100:
+                print_warning(f"雅可比条件数过高: {cond_number:.1f} - 接近奇异点！")
+                self.stats['singularity_warnings'] += 1
+
+                # 动态增加阻尼，避免速度爆炸
+                adaptive_damping = self.jacobian_damping * (cond_number / 100)
+                adaptive_damping = min(adaptive_damping, 0.5)  # 最大0.5
+                print_warning(f"  自适应阻尼: {adaptive_damping:.3f}")
+            else:
+                adaptive_damping = self.jacobian_damping
+
+        except Exception as e:
+            print_error(f"条件数计算失败: {e}")
+            adaptive_damping = self.jacobian_damping
+
+        # DLS 伪逆（使用自适应阻尼）
+        JJT = J @ J.T + adaptive_damping * np.eye(6)
         J_pinv = J.T @ np.linalg.inv(JJT)
 
         # 计算关节速度
         joint_vel = J_pinv @ twist
 
-        # 限制
+        # 限制到配置的最大速度
         joint_vel = np.clip(joint_vel, -self.max_joint_velocity, self.max_joint_velocity)
 
         return joint_vel
@@ -455,6 +549,8 @@ class DebugTeleopRecorder:
         print(f"  总步数: {self.stats['iterations']}")
         print(f"  错误数: {self.stats['errors']}")
         print(f"  警告数: {self.stats['warnings']}")
+        print(f"  奇异性警告: {self.stats['singularity_warnings']}")
+        print(f"  最大条件数: {self.stats['max_cond_number']:.1f}")
         print(f"  最大线速度: {self.stats['max_linear_vel']:.4f} m/s")
         print(f"  最大关节速度: {self.stats['max_joint_vel']:.3f} rad/s")
 
