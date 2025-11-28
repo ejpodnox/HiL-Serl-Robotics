@@ -131,7 +131,7 @@ class TeleopDataRecorder:
         # 初始化标定器
         calibrator = WorkspaceCalibrator(
             control_radius=0.25,      # 控制半径 25cm
-            deadzone_radius=0.03      # 死区半径 3cm
+            deadzone_radius=0.10      # 死区半径 10cm（避免微小抖动）
         )
 
         sample_count = 0
