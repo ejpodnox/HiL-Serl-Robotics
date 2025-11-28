@@ -169,6 +169,24 @@ class DebugTeleopRecorder:
         self.startup_steps = 100  # 前100步（5秒）使用启动保护
         self.startup_scale = 0.2  # 启动期间速度缩放到20%
 
+        # 【修复5：关节位置安全裕度】
+        self.position_safety_margin = 0.5  # rad - 安全裕度阈值
+        self.position_danger_margin = 0.3  # rad - 危险裕度阈值
+
+        # 【修复6：工作空间边界保护】
+        self.workspace_center = np.array([0.0, 0.0, 0.3])  # 机器人基座坐标系
+        self.workspace_radius_safe = 0.8  # m - 安全半径
+        self.workspace_radius_max = 0.9   # m - 最大半径
+        self.workspace_height_min = -0.1  # m - 最低高度
+        self.workspace_height_max = 1.0   # m - 最高高度
+
+        # 【修复7：紧急停止和异常检测】
+        self.emergency_stop = False
+        self.consecutive_errors = 0
+        self.consecutive_warnings = 0
+        self.max_consecutive_errors = 5
+        self.max_consecutive_warnings = 10
+
         # 统计数据
         self.stats = {
             'iterations': 0,
@@ -178,6 +196,9 @@ class DebugTeleopRecorder:
             'max_linear_vel': 0.0,
             'max_cond_number': 0.0,  # 最大条件数
             'singularity_warnings': 0,  # 奇异性警告次数
+            'position_limit_activations': 0,  # 位置限制激活次数
+            'workspace_limit_activations': 0,  # 工作空间限制激活次数
+            'emergency_stops': 0,  # 紧急停止次数
         }
 
     def _run_calibration(self):
@@ -248,7 +269,10 @@ class DebugTeleopRecorder:
         """运行调试遥操作"""
         print_section("开始调试遥操作")
 
-        print_info("按 'q' 停止")
+        print_info("按键说明:")
+        print("  'q' - 停止程序")
+        print("  'e' - 紧急停止（立即停止机器人）")
+        print("  'r' - 恢复运行（从紧急停止状态恢复）")
         print("")
 
         start_time = time.time()
@@ -262,11 +286,30 @@ class DebugTeleopRecorder:
                 while True:
                     loop_start = time.time()
 
-                    # 检查按键
+                    # 【修复7：检查按键 - 添加紧急停止】
                     key = kb.get_key(timeout=0.001)
                     if key == 'q':
                         print_warning("用户停止遥操作")
                         break
+                    elif key == 'e':
+                        print_error("⚠️  紧急停止激活！")
+                        self.emergency_stop = True
+                        self.stats['emergency_stops'] += 1
+                        # 立即发送零速度
+                        self.interface.send_joint_velocities([0.0] * 7, dt=self.dt)
+                        print_warning("机器人已停止，按 'r' 恢复运行，按 'q' 退出")
+                        continue
+                    elif key == 'r' and self.emergency_stop:
+                        print_success("恢复运行")
+                        self.emergency_stop = False
+                        self.consecutive_errors = 0
+                        self.consecutive_warnings = 0
+                        continue
+
+                    # 【修复7：如果处于紧急停止状态，跳过控制循环】
+                    if self.emergency_stop:
+                        time.sleep(self.dt)
+                        continue
 
                     try:
                         # ===== 1. Spin 接收关节状态 =====
@@ -277,19 +320,19 @@ class DebugTeleopRecorder:
                         if joint_state is None:
                             print_error(f"[{step:4d}] 无法获取关节状态")
                             self.stats['errors'] += 1
+                            self.consecutive_errors += 1
+
+                            # 【修复7：检查连续错误】
+                            if self.consecutive_errors >= self.max_consecutive_errors:
+                                print_error(f"连续{self.consecutive_errors}次错误，触发紧急停止！")
+                                self.emergency_stop = True
+                                self.stats['emergency_stops'] += 1
+
                             time.sleep(self.dt)
                             continue
 
                         q, q_dot = joint_state
                         current_max_vel = np.max(np.abs(q_dot))
-
-                        # 检查是否接近关节极限
-                        for i in range(7):
-                            margin_min = q[i] - self.joint_position_min[i]
-                            margin_max = self.joint_position_max[i] - q[i]
-                            if margin_min < 0.3 or margin_max < 0.3:
-                                print_warning(f"[{step:4d}] 关节{i+1}接近极限！pos={q[i]:.2f}, 余量=({margin_min:.2f}, {margin_max:.2f})")
-                                self.stats['warnings'] += 1
 
                         # ===== 3. 获取 VisionPro 数据 =====
                         try:
@@ -342,6 +385,12 @@ class DebugTeleopRecorder:
                                 if step % 20 == 0:
                                     print_info(f"[{step:4d}] 启动保护中，速度缩放: {scale:.2f}")
 
+                            # 【修复5：应用关节位置安全裕度检查】
+                            joint_velocities = self._apply_joint_position_safety(joint_velocities, q)
+
+                            # 【修复6：应用工作空间边界保护】
+                            joint_velocities = self._apply_workspace_safety(joint_velocities, q)
+
                             # 更新上次速度
                             self.last_joint_velocities = joint_velocities.copy()
 
@@ -352,6 +401,14 @@ class DebugTeleopRecorder:
                             print_error(f"[{step:4d}] 关节速度计算失败: {e}")
                             traceback.print_exc()
                             self.stats['errors'] += 1
+                            self.consecutive_errors += 1
+
+                            # 【修复7：检查连续错误】
+                            if self.consecutive_errors >= self.max_consecutive_errors:
+                                print_error(f"连续{self.consecutive_errors}次错误，触发紧急停止！")
+                                self.emergency_stop = True
+                                self.stats['emergency_stops'] += 1
+
                             time.sleep(self.dt)
                             continue
 
@@ -369,16 +426,37 @@ class DebugTeleopRecorder:
 
                         if not safety_ok:
                             print_warning(f"[{step:4d}] 安全检查失败，跳过此步")
+                            self.consecutive_warnings += 1
+
+                            # 【修复7：检查连续警告】
+                            if self.consecutive_warnings >= self.max_consecutive_warnings:
+                                print_error(f"连续{self.consecutive_warnings}次警告，触发紧急停止！")
+                                self.emergency_stop = True
+                                self.stats['emergency_stops'] += 1
+
                             time.sleep(self.dt)
                             continue
+                        else:
+                            # 【修复7：成功执行，重置连续警告计数】
+                            self.consecutive_warnings = 0
 
                         # ===== 7. 发送命令 =====
                         try:
                             self.interface.send_joint_velocities(joint_velocities.tolist(), dt=self.dt)
+                            # 【修复7：成功发送命令，重置连续错误计数】
+                            self.consecutive_errors = 0
                         except Exception as e:
                             print_error(f"[{step:4d}] 发送命令失败: {e}")
                             traceback.print_exc()
                             self.stats['errors'] += 1
+                            self.consecutive_errors += 1
+
+                            # 【修复7：检查连续错误】
+                            if self.consecutive_errors >= self.max_consecutive_errors:
+                                print_error(f"连续{self.consecutive_errors}次错误，触发紧急停止！")
+                                self.emergency_stop = True
+                                self.stats['emergency_stops'] += 1
+
                             time.sleep(self.dt)
                             continue
 
@@ -430,6 +508,176 @@ class DebugTeleopRecorder:
             traceback.print_exc()
         finally:
             self._print_statistics()
+
+    def _apply_joint_position_safety(self, joint_velocities: np.ndarray, q: np.ndarray) -> np.ndarray:
+        """
+        【修复5：关节位置安全裕度主动避让】
+
+        检查关节位置,当接近极限时主动降低朝向极限方向的速度
+
+        Args:
+            joint_velocities: 原始关节速度 [7]
+            q: 当前关节位置 [7]
+
+        Returns:
+            安全缩放后的关节速度 [7]
+        """
+        safe_velocities = joint_velocities.copy()
+        safety_activated = False
+
+        for i in range(7):
+            margin_min = q[i] - self.joint_position_min[i]
+            margin_max = self.joint_position_max[i] - q[i]
+
+            # 检查下限
+            if margin_min < self.position_safety_margin:
+                if joint_velocities[i] < 0:  # 朝向下限移动
+                    if margin_min < self.position_danger_margin:
+                        # 危险区域: 完全阻止
+                        safe_velocities[i] = 0.0
+                        print_error(f"关节{i+1}危险接近下限！余量={margin_min:.3f} rad, 阻止负向运动")
+                        safety_activated = True
+                    else:
+                        # 警告区域: 按比例缩放
+                        scale = (margin_min - self.position_danger_margin) / \
+                                (self.position_safety_margin - self.position_danger_margin)
+                        safe_velocities[i] *= scale
+                        print_warning(f"关节{i+1}接近下限，速度缩放={scale:.2f}, 余量={margin_min:.3f} rad")
+                        safety_activated = True
+
+            # 检查上限
+            if margin_max < self.position_safety_margin:
+                if joint_velocities[i] > 0:  # 朝向上限移动
+                    if margin_max < self.position_danger_margin:
+                        # 危险区域: 完全阻止
+                        safe_velocities[i] = 0.0
+                        print_error(f"关节{i+1}危险接近上限！余量={margin_max:.3f} rad, 阻止正向运动")
+                        safety_activated = True
+                    else:
+                        # 警告区域: 按比例缩放
+                        scale = (margin_max - self.position_danger_margin) / \
+                                (self.position_safety_margin - self.position_danger_margin)
+                        safe_velocities[i] *= scale
+                        print_warning(f"关节{i+1}接近上限，速度缩放={scale:.2f}, 余量={margin_max:.3f} rad")
+                        safety_activated = True
+
+        if safety_activated:
+            self.stats['position_limit_activations'] += 1
+
+        return safe_velocities
+
+    def _apply_workspace_safety(self, joint_velocities: np.ndarray, q: np.ndarray) -> np.ndarray:
+        """
+        【修复6：工作空间边界保护】
+
+        检查末端执行器位置,防止超出安全工作空间
+
+        Args:
+            joint_velocities: 关节速度 [7]
+            q: 当前关节位置 [7]
+
+        Returns:
+            安全缩放后的关节速度 [7]
+        """
+        # 计算末端执行器位置 (使用正运动学)
+        ee_pos = self._compute_end_effector_position(q)
+
+        # 相对于工作空间中心的位置
+        relative_pos = ee_pos - self.workspace_center
+        distance_horizontal = np.linalg.norm(relative_pos[:2])  # xy平面距离
+        height = ee_pos[2]
+
+        scale = 1.0
+        safety_activated = False
+
+        # 检查水平距离
+        if distance_horizontal > self.workspace_radius_safe:
+            if distance_horizontal > self.workspace_radius_max:
+                print_error(f"末端超出最大工作空间！距离={distance_horizontal:.3f}m > {self.workspace_radius_max}m")
+                # 计算是否在向外移动
+                # 简化处理: 大幅降低速度
+                scale = 0.1
+                safety_activated = True
+            else:
+                # 警告区域: 按比例缩放
+                margin = self.workspace_radius_max - distance_horizontal
+                scale_factor = margin / (self.workspace_radius_max - self.workspace_radius_safe)
+                scale = min(scale, scale_factor)
+                print_warning(f"末端接近工作空间边界，距离={distance_horizontal:.3f}m, 速度缩放={scale:.2f}")
+                safety_activated = True
+
+        # 检查高度
+        if height < self.workspace_height_min + 0.1:
+            if height < self.workspace_height_min:
+                print_error(f"末端低于最小高度！h={height:.3f}m < {self.workspace_height_min}m")
+                scale = min(scale, 0.1)
+                safety_activated = True
+            else:
+                margin = height - self.workspace_height_min
+                scale_factor = margin / 0.1
+                scale = min(scale, scale_factor)
+                print_warning(f"末端接近最小高度，h={height:.3f}m, 速度缩放={scale:.2f}")
+                safety_activated = True
+
+        if height > self.workspace_height_max - 0.1:
+            if height > self.workspace_height_max:
+                print_error(f"末端高于最大高度！h={height:.3f}m > {self.workspace_height_max}m")
+                scale = min(scale, 0.1)
+                safety_activated = True
+            else:
+                margin = self.workspace_height_max - height
+                scale_factor = margin / 0.1
+                scale = min(scale, scale_factor)
+                print_warning(f"末端接近最大高度，h={height:.3f}m, 速度缩放={scale:.2f}")
+                safety_activated = True
+
+        if safety_activated:
+            self.stats['workspace_limit_activations'] += 1
+
+        return joint_velocities * scale
+
+    def _compute_end_effector_position(self, q: np.ndarray) -> np.ndarray:
+        """
+        计算末端执行器位置 (正运动学)
+
+        Args:
+            q: 关节位置 [7]
+
+        Returns:
+            末端执行器位置 [x, y, z]
+        """
+        # URDF 参数
+        d1 = 0.15643
+        d2 = 0.12838
+        d3 = 0.21038
+        d4 = 0.21038
+        d5 = 0.20843
+        d6 = 0.10593
+        d7 = 0.10593
+        d_ee = 0.061525
+
+        def rot_z(theta):
+            c, s = np.cos(theta), np.sin(theta)
+            return np.array([[c, -s, 0, 0], [s, c, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+
+        def rot_x(theta):
+            c, s = np.cos(theta), np.sin(theta)
+            return np.array([[1, 0, 0, 0], [0, c, -s, 0], [0, s, c, 0], [0, 0, 0, 1]])
+
+        def trans(x, y, z):
+            return np.array([[1, 0, 0, x], [0, 1, 0, y], [0, 0, 1, z], [0, 0, 0, 1]])
+
+        T0 = np.eye(4)
+        T1 = T0 @ trans(0, 0, d1) @ rot_x(np.pi) @ rot_z(q[0])
+        T2 = T1 @ trans(0, 0.005375, -d2) @ rot_x(np.pi/2) @ rot_z(q[1])
+        T3 = T2 @ trans(0, -d3, -0.006375) @ rot_x(-np.pi/2) @ rot_z(q[2])
+        T4 = T3 @ trans(0, 0.006375, -d4) @ rot_x(np.pi/2) @ rot_z(q[3])
+        T5 = T4 @ trans(0, -d5, -0.006375) @ rot_x(-np.pi/2) @ rot_z(q[4])
+        T6 = T5 @ trans(0, 0.00017505, -d6) @ rot_x(np.pi/2) @ rot_z(q[5])
+        T7 = T6 @ trans(0, -d7, -0.00017505) @ rot_x(-np.pi/2) @ rot_z(q[6])
+        T_ee = T7 @ trans(0, 0, -d_ee) @ rot_x(np.pi)
+
+        return T_ee[:3, 3]
 
     def _twist_to_joint_velocity(self, twist: np.ndarray, q: np.ndarray) -> np.ndarray:
         """
@@ -550,6 +798,9 @@ class DebugTeleopRecorder:
         print(f"  错误数: {self.stats['errors']}")
         print(f"  警告数: {self.stats['warnings']}")
         print(f"  奇异性警告: {self.stats['singularity_warnings']}")
+        print(f"  位置限制激活: {self.stats['position_limit_activations']} 次")
+        print(f"  工作空间限制激活: {self.stats['workspace_limit_activations']} 次")
+        print(f"  紧急停止次数: {self.stats['emergency_stops']} 次")
         print(f"  最大条件数: {self.stats['max_cond_number']:.1f}")
         print(f"  最大线速度: {self.stats['max_linear_vel']:.4f} m/s")
         print(f"  最大关节速度: {self.stats['max_joint_vel']:.3f} rad/s")
