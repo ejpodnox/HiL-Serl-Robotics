@@ -28,11 +28,11 @@ from vision_pro_control.utils.keyboard_monitor import KeyboardMonitor
 class TeleopDataRecorder:
     """遥操作数据记录器（解耦版本）"""
 
-    def __init__(self, config_file: str, auto_calibrate: bool = False):
+    def __init__(self, config_file: str, auto_calibrate: bool = True):
         """
         Args:
             config_file: 配置文件路径
-            auto_calibrate: 是否自动重新标定
+            auto_calibrate: 是否自动重新标定（默认True，每次都标定）
         """
         # 加载配置
         with open(config_file, 'r') as f:
@@ -67,17 +67,17 @@ class TeleopDataRecorder:
         # 标定文件路径
         self.calibration_file = Path(__file__).parent / self.config['calibration']['file']
 
-        # 如果需要自动标定或标定文件不存在，则运行标定
-        if auto_calibrate or not self.calibration_file.exists():
-            if not self.calibration_file.exists():
-                print("\n" + "=" * 60)
-                print("✗ 标定文件不存在，将进行自动标定")
-                print("=" * 60)
-            else:
-                print("\n" + "=" * 60)
-                print("⚠️  将重新进行标定")
-                print("=" * 60)
-
+        # 默认强制重新标定
+        if auto_calibrate:
+            print("\n" + "=" * 60)
+            print("⚠️  强制重新标定（每次运行都会标定）")
+            print("=" * 60)
+            # 执行自动标定
+            self._run_calibration()
+        elif not self.calibration_file.exists():
+            print("\n" + "=" * 60)
+            print("✗ 标定文件不存在，将进行自动标定")
+            print("=" * 60)
             # 执行自动标定
             self._run_calibration()
 
@@ -463,10 +463,13 @@ def main():
                         help='配置文件路径')
     parser.add_argument('--task_name', type=str, default='teleop',
                         help='任务名称（用于文件命名）')
-    parser.add_argument('--auto-calibrate', action='store_true',
-                        help='每次运行时自动重新标定')
+    parser.add_argument('--skip-calibrate', action='store_true',
+                        help='跳过自动标定（默认每次都重新标定）')
 
     args = parser.parse_args()
+
+    # 默认强制重新标定，除非用户明确跳过
+    auto_calibrate = not args.skip_calibrate
 
     # 创建保存目录
     save_dir = Path(args.save_dir) / args.task_name
@@ -480,8 +483,8 @@ def main():
     print("=" * 60)
 
     try:
-        # 初始化记录器
-        recorder = TeleopDataRecorder(config_file=args.config, auto_calibrate=args.auto_calibrate)
+        # 初始化记录器（默认强制重新标定）
+        recorder = TeleopDataRecorder(config_file=args.config, auto_calibrate=auto_calibrate)
         recorder.start()
 
         print("\n按键说明:")
