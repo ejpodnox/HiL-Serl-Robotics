@@ -28,10 +28,11 @@ from vision_pro_control.utils.keyboard_monitor import KeyboardMonitor
 class TeleopDataRecorder:
     """遥操作数据记录器（解耦版本）"""
 
-    def __init__(self, config_file: str):
+    def __init__(self, config_file: str, auto_calibrate: bool = False):
         """
         Args:
             config_file: 配置文件路径
+            auto_calibrate: 是否自动重新标定
         """
         # 加载配置
         with open(config_file, 'r') as f:
@@ -63,21 +64,24 @@ class TeleopDataRecorder:
                 print("  ✓ 关节状态已就绪")
                 break
 
-        # 加载标定文件
-        calibration_file = Path(__file__).parent / self.config['calibration']['file']
-        if not calibration_file.exists():
-            print("\n" + "=" * 60)
-            print("✗ 标定文件不存在！")
-            print("=" * 60)
-            print(f"缺失文件: {calibration_file}")
-            print("\n需要先运行标定流程生成标定文件。请执行:")
-            print("  python vision_pro_control/nodes/teleop_node.py")
-            print("\n或者运行快速标定:")
-            print("  python tools/calibrate_visionpro.py")
-            print("=" * 60)
-            raise FileNotFoundError(f"标定文件不存在: {calibration_file}")
+        # 标定文件路径
+        self.calibration_file = Path(__file__).parent / self.config['calibration']['file']
 
-        self.mapper = CoordinateMapper(calibration_file=calibration_file)
+        # 如果需要自动标定或标定文件不存在，则运行标定
+        if auto_calibrate or not self.calibration_file.exists():
+            if not self.calibration_file.exists():
+                print("\n" + "=" * 60)
+                print("✗ 标定文件不存在，将进行自动标定")
+                print("=" * 60)
+            else:
+                print("\n" + "=" * 60)
+                print("⚠️  将重新进行标定")
+                print("=" * 60)
+
+            # 执行自动标定
+            self._run_calibration()
+
+        self.mapper = CoordinateMapper(calibration_file=self.calibration_file)
 
         # 设置参数
         mapper_cfg = self.config['mapper']
@@ -100,6 +104,101 @@ class TeleopDataRecorder:
         print("✓ 遥操作记录器初始化完成")
         print(f"  控制频率: {self.control_frequency} Hz (dt={self.dt:.3f}s)")
         print(f"  最大关节速度: {self.max_joint_velocity} rad/s")
+
+    def _run_calibration(self):
+        """
+        运行自动标定流程
+        """
+        from vision_pro_control.core.calibrator import WorkspaceCalibrator
+
+        print("\n" + "=" * 60)
+        print("【自动标定流程】")
+        print("=" * 60)
+        print("目标：确定一个舒适的操作中心位置")
+        print()
+        print("步骤:")
+        print("  1. 将手移动到你认为舒适的操作中心位置")
+        print("  2. 按 's' 键采样该位置（建议采样 3-5 次）")
+        print("  3. 按 'c' 键保存中心点并完成标定")
+        print()
+        print("按键说明:")
+        print("  's'     - 采样当前手部位置")
+        print("  'c'     - 保存中心点并完成标定")
+        print("  'p'     - 打印当前位置信息")
+        print("  'q'     - 退出程序")
+        print("=" * 60)
+
+        # 初始化标定器
+        calibrator = WorkspaceCalibrator(
+            control_radius=0.25,      # 控制半径 25cm
+            deadzone_radius=0.03      # 死区半径 3cm
+        )
+
+        sample_count = 0
+
+        try:
+            with KeyboardMonitor() as kb:
+                while True:
+                    key = kb.get_key(timeout=0.05)
+
+                    if not key:
+                        continue
+
+                    if key == 'q':
+                        print("\n✗ 用户退出标定，程序终止")
+                        raise KeyboardInterrupt()
+
+                    elif key == 's':
+                        # 采样
+                        try:
+                            position, rotation = self.vp_bridge.get_hand_relative_to_head()
+                            calibrator.add_sample(position, rotation)
+                            sample_count += 1
+                            print(f"✓ 采样 #{sample_count}: "
+                                  f"位置=[{position[0]:6.3f}, {position[1]:6.3f}, {position[2]:6.3f}]")
+                        except Exception as e:
+                            print(f"✗ 采样失败: {e}")
+
+                    elif key == 'c':
+                        # 保存中心点并完成标定
+                        if calibrator.save_center():
+                            # 保存到文件
+                            self.calibration_file.parent.mkdir(parents=True, exist_ok=True)
+                            calibrator.save_to_file(self.calibration_file, overwrite=True)
+
+                            print("\n" + "=" * 60)
+                            print("✓ 标定完成！")
+                            print("=" * 60)
+                            print(f"标定文件: {self.calibration_file}")
+                            print(f"中心位置: {calibrator.center_position}")
+                            print(f"控制半径: {calibrator.control_radius} m")
+                            print(f"死区半径: {calibrator.deadzone_radius} m")
+                            print("=" * 60 + "\n")
+                            return
+                        else:
+                            print("✗ 需要至少 1 个采样点，请先按 's' 进行采样")
+
+                    elif key == 'p':
+                        # 打印当前位置
+                        try:
+                            position, rotation = self.vp_bridge.get_hand_relative_to_head()
+                            print(f"\n当前位置: [{position[0]:6.3f}, {position[1]:6.3f}, {position[2]:6.3f}]")
+
+                            if calibrator.center_position is not None:
+                                distance = np.linalg.norm(position - calibrator.center_position)
+                                print(f"距离中心: {distance:.3f} m ({distance*100:.1f} cm)")
+                        except Exception as e:
+                            print(f"获取位置失败: {e}")
+
+        except KeyboardInterrupt:
+            print("\n✗ 标定被中断，程序终止")
+            raise
+
+        except Exception as e:
+            print(f"\n✗ 标定失败: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
 
     def record_trajectory(self):
         """
@@ -364,6 +463,8 @@ def main():
                         help='配置文件路径')
     parser.add_argument('--task_name', type=str, default='teleop',
                         help='任务名称（用于文件命名）')
+    parser.add_argument('--auto-calibrate', action='store_true',
+                        help='每次运行时自动重新标定')
 
     args = parser.parse_args()
 
@@ -380,7 +481,7 @@ def main():
 
     try:
         # 初始化记录器
-        recorder = TeleopDataRecorder(config_file=args.config)
+        recorder = TeleopDataRecorder(config_file=args.config, auto_calibrate=args.auto_calibrate)
         recorder.start()
 
         print("\n按键说明:")
