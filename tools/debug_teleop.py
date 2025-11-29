@@ -41,20 +41,28 @@ class Colors:
     BOLD = '\033[1m'
 
 
-def print_error(msg):
+def print_error(msg, log_list=None):
     print(f"{Colors.RED}✗ {msg}{Colors.RESET}")
+    if log_list is not None:
+        log_list.append(f"[ERROR] {msg}")
 
 
-def print_warning(msg):
+def print_warning(msg, log_list=None):
     print(f"{Colors.YELLOW}⚠️  {msg}{Colors.RESET}")
+    if log_list is not None:
+        log_list.append(f"[WARNING] {msg}")
 
 
-def print_success(msg):
+def print_success(msg, log_list=None):
     print(f"{Colors.GREEN}✓ {msg}{Colors.RESET}")
+    if log_list is not None:
+        log_list.append(f"[SUCCESS] {msg}")
 
 
-def print_info(msg):
+def print_info(msg, log_list=None):
     print(f"{Colors.CYAN}ℹ {msg}{Colors.RESET}")
+    if log_list is not None:
+        log_list.append(f"[INFO] {msg}")
 
 
 def print_section(title):
@@ -201,6 +209,12 @@ class DebugTeleopRecorder:
             'emergency_stops': 0,  # 紧急停止次数
         }
 
+        # 用于减少重复输出
+        self.last_cond_number = 0.0  # 上一次的条件数
+
+        # 日志记录
+        self.log_messages = []  # 存储所有日志消息
+
     def _run_calibration(self):
         """运行标定流程"""
         print_section("自动标定流程")
@@ -321,13 +335,13 @@ class DebugTeleopRecorder:
                         # ===== 2. 获取关节状态 =====
                         joint_state = self.interface.get_joint_state()
                         if joint_state is None:
-                            print_error(f"[{step:4d}] 无法获取关节状态")
+                            print_error(f"[{step:4d}] 无法获取关节状态", self.log_messages)
                             self.stats['errors'] += 1
                             self.consecutive_errors += 1
 
                             # 【修复7：检查连续错误】
                             if self.consecutive_errors >= self.max_consecutive_errors:
-                                print_error(f"连续{self.consecutive_errors}次错误，触发紧急停止！")
+                                print_error(f"连续{self.consecutive_errors}次错误，触发紧急停止！", self.log_messages)
                                 self.emergency_stop = True
                                 self.stats['emergency_stops'] += 1
 
@@ -401,14 +415,15 @@ class DebugTeleopRecorder:
                             self.stats['max_joint_vel'] = max(self.stats['max_joint_vel'], commanded_max_vel)
 
                         except Exception as e:
-                            print_error(f"[{step:4d}] 关节速度计算失败: {e}")
+                            print_error(f"[{step:4d}] 关节速度计算失败: {e}", self.log_messages)
+                            self.log_messages.append(traceback.format_exc())
                             traceback.print_exc()
                             self.stats['errors'] += 1
                             self.consecutive_errors += 1
 
                             # 【修复7：检查连续错误】
                             if self.consecutive_errors >= self.max_consecutive_errors:
-                                print_error(f"连续{self.consecutive_errors}次错误，触发紧急停止！")
+                                print_error(f"连续{self.consecutive_errors}次错误，触发紧急停止！", self.log_messages)
                                 self.emergency_stop = True
                                 self.stats['emergency_stops'] += 1
 
@@ -419,21 +434,21 @@ class DebugTeleopRecorder:
                         safety_ok = True
                         for i, (vel, limit) in enumerate(zip(joint_velocities, velocity_limit)):
                             if abs(vel) > limit * 0.9:  # 接近限制的90%就警告
-                                print_warning(f"[{step:4d}] 关节{i+1} 速度接近限制: {vel:.3f} / {limit:.3f} rad/s")
+                                print_warning(f"[{step:4d}] 关节{i+1} 速度接近限制: {vel:.3f} / {limit:.3f} rad/s", self.log_messages)
                                 self.stats['warnings'] += 1
 
                             if abs(vel) > limit:  # 超过限制
-                                print_error(f"[{step:4d}] 关节{i+1} 速度超限: {vel:.3f} > {limit:.3f} rad/s")
+                                print_error(f"[{step:4d}] 关节{i+1} 速度超限: {vel:.3f} > {limit:.3f} rad/s", self.log_messages)
                                 safety_ok = False
                                 self.stats['warnings'] += 1
 
                         if not safety_ok:
-                            print_warning(f"[{step:4d}] 安全检查失败，跳过此步")
+                            print_warning(f"[{step:4d}] 安全检查失败，跳过此步", self.log_messages)
                             self.consecutive_warnings += 1
 
                             # 【修复7：检查连续警告】
                             if self.consecutive_warnings >= self.max_consecutive_warnings:
-                                print_error(f"连续{self.consecutive_warnings}次警告，触发紧急停止！")
+                                print_error(f"连续{self.consecutive_warnings}次警告，触发紧急停止！", self.log_messages)
                                 self.emergency_stop = True
                                 self.stats['emergency_stops'] += 1
 
@@ -708,23 +723,46 @@ class DebugTeleopRecorder:
 
             # 条件数过高 = 接近奇异点
             if cond_number > 100:
-                print_warning(f"雅可比条件数过高: {cond_number:.1f} - 接近奇异点！")
-                self.stats['singularity_warnings'] += 1
+                # 只在条件数变化时输出（避免重复）
+                cond_changed = abs(cond_number - self.last_cond_number) > 10  # 变化超过10才输出
 
-                # 详细诊断信息
-                print(f"{Colors.RED}  【奇异性详细诊断】{Colors.RESET}")
-                print(f"    条件数: {cond_number:.1f} (正常应 < 100)")
-                print(f"    秩: {J_rank}/6 (满秩应为6)")
-                print(f"    det(J*J^T): {J_det_JJT:.6e}")
-                print(f"    奇异值: " + ", ".join([f"{sv:.3f}" for sv in singular_values]))
-                print(f"    最大/最小奇异值比: {singular_values[0]/singular_values[-1]:.1f}")
+                if cond_changed:
+                    print_warning(f"雅可比条件数过高: {cond_number:.1f} - 接近奇异点！", self.log_messages)
+                    self.stats['singularity_warnings'] += 1
 
-                # 动态增加阻尼，避免速度爆炸
-                adaptive_damping = self.jacobian_damping * (cond_number / 100)
-                adaptive_damping = min(adaptive_damping, 0.5)  # 最大0.5
-                print_warning(f"  自适应阻尼: {adaptive_damping:.3f}")
+                    # 详细诊断信息
+                    msg = f"【奇异性详细诊断】"
+                    print(f"{Colors.RED}  {msg}{Colors.RESET}")
+                    self.log_messages.append(f"  {msg}")
+
+                    details = [
+                        f"    条件数: {cond_number:.1f} (正常应 < 100)",
+                        f"    秩: {J_rank}/6 (满秩应为6)",
+                        f"    det(J*J^T): {J_det_JJT:.6e}",
+                        f"    奇异值: " + ", ".join([f"{sv:.3f}" for sv in singular_values]),
+                        f"    最大/最小奇异值比: {singular_values[0]/singular_values[-1]:.1f}"
+                    ]
+                    for detail in details:
+                        print(detail)
+                        self.log_messages.append(detail)
+
+                    # 动态增加阻尼，避免速度爆炸
+                    adaptive_damping = self.jacobian_damping * (cond_number / 100)
+                    adaptive_damping = min(adaptive_damping, 0.5)  # 最大0.5
+                    print_warning(f"  自适应阻尼: {adaptive_damping:.3f}", self.log_messages)
+
+                    # 更新上一次条件数
+                    self.last_cond_number = cond_number
+                else:
+                    # 条件数没有明显变化，只更新阻尼，不输出
+                    adaptive_damping = self.jacobian_damping * (cond_number / 100)
+                    adaptive_damping = min(adaptive_damping, 0.5)
             else:
                 adaptive_damping = self.jacobian_damping
+                # 离开奇异点，重置
+                if self.last_cond_number > 100:
+                    print_success(f"离开奇异点区域，条件数降至: {cond_number:.1f}", self.log_messages)
+                    self.last_cond_number = cond_number
 
         except Exception as e:
             print_error(f"条件数计算失败: {e}")
@@ -875,6 +913,47 @@ class DebugTeleopRecorder:
             print_error(f"启动失败: {e}")
             raise
 
+    def save_log_to_file(self, filename="error_log.txt"):
+        """保存日志到文件"""
+        try:
+            import datetime
+            log_path = Path(__file__).parent.parent / filename
+
+            with open(log_path, 'w', encoding='utf-8') as f:
+                f.write("=" * 80 + "\n")
+                f.write(f"遥操作调试日志 - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write("=" * 80 + "\n\n")
+
+                # 写入统计信息
+                f.write("运行统计:\n")
+                f.write(f"  总步数: {self.stats['iterations']}\n")
+                f.write(f"  错误数: {self.stats['errors']}\n")
+                f.write(f"  警告数: {self.stats['warnings']}\n")
+                f.write(f"  奇异性警告: {self.stats['singularity_warnings']}\n")
+                f.write(f"  位置限制激活: {self.stats['position_limit_activations']} 次\n")
+                f.write(f"  工作空间限制激活: {self.stats['workspace_limit_activations']} 次\n")
+                f.write(f"  紧急停止次数: {self.stats['emergency_stops']} 次\n")
+                f.write(f"  最大条件数: {self.stats['max_cond_number']:.1f}\n")
+                f.write(f"  最大线速度: {self.stats['max_linear_vel']:.4f} m/s\n")
+                f.write(f"  最大关节速度: {self.stats['max_joint_vel']:.3f} rad/s\n")
+
+                if self.stats['iterations'] > 0:
+                    error_rate = self.stats['errors'] / self.stats['iterations'] * 100
+                    f.write(f"  错误率: {error_rate:.1f}%\n")
+
+                f.write("\n" + "=" * 80 + "\n")
+                f.write("详细日志:\n")
+                f.write("=" * 80 + "\n\n")
+
+                # 写入所有日志消息
+                for msg in self.log_messages:
+                    f.write(msg + "\n")
+
+            print_success(f"日志已保存到: {log_path}")
+
+        except Exception as e:
+            print_error(f"保存日志失败: {e}")
+
     def stop(self):
         """停止所有组件"""
         try:
@@ -915,6 +994,9 @@ def main():
         traceback.print_exc()
     finally:
         try:
+            # 保存日志
+            recorder.save_log_to_file()
+            # 停止组件
             recorder.stop()
         except:
             pass
