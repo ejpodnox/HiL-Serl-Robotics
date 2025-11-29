@@ -267,12 +267,15 @@ class DebugTeleopRecorder:
 
     def run_debug_teleop(self):
         """运行调试遥操作"""
-        print_section("开始调试遥操作")
+        print_section("开始调试遥操作 - 【只读模式】")
+
+        print(f"\n{Colors.MAGENTA}{Colors.BOLD}{'*' * 80}")
+        print(f"                    ⚠️  只读模式 - 不会发送任何运动命令  ⚠️")
+        print(f"                    仅用于诊断和数据收集")
+        print(f"{'*' * 80}{Colors.RESET}\n")
 
         print_info("按键说明:")
         print("  'q' - 停止程序")
-        print("  'e' - 紧急停止（立即停止机器人）")
-        print("  'r' - 恢复运行（从紧急停止状态恢复）")
         print("")
 
         start_time = time.time()
@@ -440,49 +443,54 @@ class DebugTeleopRecorder:
                             # 【修复7：成功执行，重置连续警告计数】
                             self.consecutive_warnings = 0
 
-                        # ===== 7. 发送命令 =====
-                        try:
-                            self.interface.send_joint_velocities(joint_velocities.tolist(), dt=self.dt)
-                            # 【修复7：成功发送命令，重置连续错误计数】
-                            self.consecutive_errors = 0
-                        except Exception as e:
-                            print_error(f"[{step:4d}] 发送命令失败: {e}")
-                            traceback.print_exc()
-                            self.stats['errors'] += 1
-                            self.consecutive_errors += 1
+                        # ===== 7. 【只读模式】不发送命令，仅输出 =====
+                        print(f"{Colors.MAGENTA}[DRY RUN] 计算完成，不发送命令{Colors.RESET}")
+                        # 注释掉实际发送
+                        # self.interface.send_joint_velocities(joint_velocities.tolist(), dt=self.dt)
+                        self.consecutive_errors = 0
 
-                            # 【修复7：检查连续错误】
-                            if self.consecutive_errors >= self.max_consecutive_errors:
-                                print_error(f"连续{self.consecutive_errors}次错误，触发紧急停止！")
-                                self.emergency_stop = True
-                                self.stats['emergency_stops'] += 1
+                        # ===== 8. 【只读模式】夹爪也不发送 =====
+                        gripper_position = self._pinch_to_gripper(pinch_distance)
+                        # 注释掉实际发送
+                        # self.interface.send_gripper_command(gripper_position)
 
-                            time.sleep(self.dt)
-                            continue
-
-                        # ===== 8. 夹爪控制 =====
-                        try:
-                            gripper_position = self._pinch_to_gripper(pinch_distance)
-                            self.interface.send_gripper_command(gripper_position)
-                        except Exception as e:
-                            # 夹爪错误不致命
-                            if step % 100 == 0:
-                                print_warning(f"[{step:4d}] 夹爪命令失败: {e}")
-
-                        # ===== 9. 打印状态 =====
-                        if step % 20 == 0:  # 每1秒打印一次
+                        # ===== 9. 打印详细状态 =====
+                        if step % 10 == 0:  # 每0.5秒打印一次
                             elapsed = time.time() - start_time
 
-                            print(f"\n{Colors.BOLD}[{step:4d}] t={elapsed:.1f}s{Colors.RESET}")
-                            print(f"  手部位置: [{position[0]:6.3f}, {position[1]:6.3f}, {position[2]:6.3f}] m")
-                            print(f"  线速度  : [{twist_array[0]:6.3f}, {twist_array[1]:6.3f}, {twist_array[2]:6.3f}] m/s (速率={linear_speed:.4f})")
-                            print(f"  角速度  : [{twist_array[3]:6.3f}, {twist_array[4]:6.3f}, {twist_array[5]:6.3f}] rad/s")
-                            print(f"  关节速度: [" + ", ".join([f"{v:5.2f}" for v in joint_velocities]) + "] rad/s")
-                            print(f"  当前最大: {current_max_vel:.3f} rad/s, 命令最大: {commanded_max_vel:.3f} rad/s")
+                            print(f"\n{Colors.BOLD}{'=' * 80}")
+                            print(f"[{step:4d}] t={elapsed:.1f}s - 【只读模式】不发送命令")
+                            print(f"{'=' * 80}{Colors.RESET}")
+
+                            # VisionPro数据
+                            print(f"\n{Colors.CYAN}📱 VisionPro 数据:{Colors.RESET}")
+                            print(f"  手部位置: [{position[0]:7.3f}, {position[1]:7.3f}, {position[2]:7.3f}] m")
+                            print(f"  线速度  : [{twist_array[0]:7.3f}, {twist_array[1]:7.3f}, {twist_array[2]:7.3f}] m/s (速率={linear_speed:.4f})")
+                            print(f"  角速度  : [{twist_array[3]:7.3f}, {twist_array[4]:7.3f}, {twist_array[5]:7.3f}] rad/s")
+
+                            # 当前关节状态
+                            print(f"\n{Colors.GREEN}🤖 当前关节状态（从机器人读取）:{Colors.RESET}")
+                            print(f"  位置: [" + ", ".join([f"{p:6.3f}" for p in q]) + "] rad")
+                            print(f"  位置: [" + ", ".join([f"{np.rad2deg(p):6.1f}°" for p in q]) + "]")
+                            print(f"  速度: [" + ", ".join([f"{v:6.3f}" for v in q_dot]) + "] rad/s")
+
+                            # 计算出的目标速度
+                            print(f"\n{Colors.YELLOW}🎯 计算的目标关节速度（准备发送）:{Colors.RESET}")
+                            print(f"  速度: [" + ", ".join([f"{v:6.3f}" for v in joint_velocities]) + "] rad/s")
+                            print(f"  最大: {commanded_max_vel:.3f} rad/s")
+
+                            # 每个关节的对比
+                            print(f"\n  关节对比:")
+                            for i in range(7):
+                                margin_min = q[i] - self.joint_position_min[i]
+                                margin_max = self.joint_position_max[i] - q[i]
+                                status = "✓" if margin_min > 0.3 and margin_max > 0.3 else "⚠"
+                                print(f"    J{i+1}: pos={q[i]:6.3f}, vel_cmd={joint_velocities[i]:6.3f}, "
+                                      f"margin=({margin_min:5.2f}, {margin_max:5.2f}) {status}")
 
                             # 警告检查
                             if linear_speed > 0.02:
-                                print_warning(f"  线速度较高: {linear_speed:.4f} m/s")
+                                print_warning(f"\n  线速度较高: {linear_speed:.4f} m/s")
                             if commanded_max_vel > 0.15:
                                 print_warning(f"  关节速度较高: {commanded_max_vel:.3f} rad/s")
 
@@ -693,10 +701,23 @@ class DebugTeleopRecorder:
             cond_number = np.linalg.cond(J)
             self.stats['max_cond_number'] = max(self.stats['max_cond_number'], cond_number)
 
+            # 【详细诊断】雅可比矩阵信息
+            J_rank = np.linalg.matrix_rank(J)
+            J_det_JJT = np.linalg.det(J @ J.T)
+            singular_values = np.linalg.svd(J, compute_uv=False)
+
             # 条件数过高 = 接近奇异点
             if cond_number > 100:
                 print_warning(f"雅可比条件数过高: {cond_number:.1f} - 接近奇异点！")
                 self.stats['singularity_warnings'] += 1
+
+                # 详细诊断信息
+                print(f"{Colors.RED}  【奇异性详细诊断】{Colors.RESET}")
+                print(f"    条件数: {cond_number:.1f} (正常应 < 100)")
+                print(f"    秩: {J_rank}/6 (满秩应为6)")
+                print(f"    det(J*J^T): {J_det_JJT:.6e}")
+                print(f"    奇异值: " + ", ".join([f"{sv:.3f}" for sv in singular_values]))
+                print(f"    最大/最小奇异值比: {singular_values[0]/singular_values[-1]:.1f}")
 
                 # 动态增加阻尼，避免速度爆炸
                 adaptive_damping = self.jacobian_damping * (cond_number / 100)
