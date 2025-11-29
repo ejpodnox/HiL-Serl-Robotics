@@ -385,11 +385,11 @@ class DebugTeleopRecorder:
                                 if step % 20 == 0:
                                     print_info(f"[{step:4d}] 启动保护中，速度缩放: {scale:.2f}")
 
-                            # 【修复5：应用关节位置安全裕度检查】
-                            joint_velocities = self._apply_joint_position_safety(joint_velocities, q)
+                            # 【修复5：应用关节位置安全裕度检查】 - 临时注释测试
+                            # joint_velocities = self._apply_joint_position_safety(joint_velocities, q)
 
-                            # 【修复6：应用工作空间边界保护】
-                            joint_velocities = self._apply_workspace_safety(joint_velocities, q)
+                            # 【修复6：应用工作空间边界保护】 - 临时注释测试
+                            # joint_velocities = self._apply_workspace_safety(joint_velocities, q)
 
                             # 更新上次速度
                             self.last_joint_velocities = joint_velocities.copy()
