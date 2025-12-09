@@ -43,6 +43,9 @@ python3 kinova_rl_env/move_to_random_pose.py
 
 # Test gripper control
 python3 tools/test_gripper.py
+
+# Generate synthetic demos for pipeline testing (no hardware needed)
+python kinova_rl_env/generate_synthetic_demos.py --num_demos 10 --horizon 150
 ```
 
 ## Key Files
@@ -53,6 +56,19 @@ python3 tools/test_gripper.py
 - `kinova_rl_env/teleop_spacemouse.py` - Dual-mode teleop script
 - `kinova_rl_env/teleop_spacemouse_ik_simple.py` - IK-based teleop
 - `kinova_rl_env/move_to_random_pose.py` - Recovery tool
+
+### Data Collection & Training
+- `kinova_rl_env/record_spacemouse_demos.py` - Collect real demos with SpaceMouse
+- `kinova_rl_env/generate_synthetic_demos.py` - Offline synthetic demos (matches recorder format)
+- `hil_serl_kinova/train_bc_kinova.py` - Behavior cloning training on collected demos
+
+#### BC Training Example
+```bash
+python hil_serl_kinova/train_bc_kinova.py \
+  --config hil_serl_kinova/experiments/kinova_reaching/config.py \
+  --demos_dir ./demos/reaching \
+  --epochs 50
+```
 
 ### Core Environment
 - `kinova_rl_env/kinova_env/` - Gym environment implementation
@@ -73,6 +89,18 @@ unset PYTHONPATH
 ros2 control list_controllers
 # joint_trajectory_controller should be 'active'
 ```
+
+### Pinocchio IK not initializing
+- Install Pinocchio in conda: `pip install pin`
+- Use URDF frames: `--base_frame gen3_base_link --ee_frame gen3_end_effector_link`
+
+### IK / Cartesian impedance not moving
+- Ensure controllers are active: `ros2 control list_controllers` (expect `joint_state_broadcaster`, `joint_trajectory_controller` active)
+- Confirm topics exist: `/joint_states` streaming and `/joint_trajectory_controller/joint_trajectory` present
+- Check frames: `ros2 run tf2_ros tf2_echo gen3_base_link gen3_end_effector_link`
+- Run teleop with explicit frames: `./run_spacemouse_ik.sh` or `python kinova_rl_env/teleop_spacemouse_ik.py --base_frame gen3_base_link --ee_frame gen3_end_effector_link`
+- Match joint names: `/joint_state` should include `joint_1..joint_7`; if not, adjust `cfg.robot.joint_names` and restart
+- If using Cartesian impedance, ensure corresponding controller is loaded/active (e.g., `twist_controller`)
 
 ### SpaceMouse not detected
 ```bash
