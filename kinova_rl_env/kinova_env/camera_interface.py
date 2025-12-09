@@ -11,6 +11,7 @@
 from abc import ABC, abstractmethod
 import numpy as np
 import cv2
+import pyrealsense2 as rs
 
 
 class CameraInterface(ABC):
@@ -44,84 +45,89 @@ class CameraInterface(ABC):
 
 class RealSenseCamera(CameraInterface):
     """
-    Intel RealSense 相机（通过 ROS2）
-
-    订阅话题: /camera/{camera_name}/color/image_raw
+    Intel RealSense 相机（本地 pyrealsense2）
     """
 
-    def __init__(self, camera_name: str, topic: str = None, target_size=(128, 128)):
-        """
-        Args:
-            camera_name: 相机名称（如 'wrist_1'）
-            topic: ROS2 话题名称（默认 /camera/{camera_name}/color/image_raw）
-            target_size: 目标图像尺寸 (H, W)
-        """
+    def __init__(
+        self,
+        camera_name: str,
+        serial_number: str = None,
+        target_size=(128, 128),
+        fps: int = 30,
+        exposure: int = 40000,
+        enable_depth: bool = False,
+        **kwargs,
+    ):
         self.camera_name = camera_name
-        self.topic = topic or f"/camera/{camera_name}/color/image_raw"
+        self.serial_number = serial_number
         self.target_size = target_size
+        self.fps = fps
+        self.exposure = exposure
+        self.enable_depth = enable_depth
 
-        self.latest_image = None
-        self.cv_bridge = None
-        self.subscription = None
+        self.pipe = None
+        self.align = None
         self._ready = False
+        self.latest_image = None
 
-        print(f"RealSenseCamera '{camera_name}' 初始化 (topic: {self.topic})")
+        print(f"RealSenseCamera '{camera_name}' 初始化 (serial: {serial_number})")
 
     def start(self):
-        """启动相机订阅"""
+        """启动 RealSense 流"""
+        self.pipe = rs.pipeline()
+        cfg = rs.config()
+        if self.serial_number:
+            cfg.enable_device(self.serial_number)
+
+        # target_size 格式: (height, width)，但 RealSense API 需要 (width, height)
+        stream_width = self.target_size[1]   # width
+        stream_height = self.target_size[0]  # height
+
+        cfg.enable_stream(rs.stream.color, stream_width, stream_height, rs.format.bgr8, self.fps)
+        if self.enable_depth:
+            cfg.enable_stream(rs.stream.depth, stream_width, stream_height, rs.format.z16, self.fps)
+        profile = self.pipe.start(cfg)
+
+        # 设置曝光
         try:
-            from cv_bridge import CvBridge
-            from sensor_msgs.msg import Image
-            import rclpy
-            from rclpy.node import Node
+            sensor = profile.get_device().query_sensors()[0]
+            sensor.set_option(rs.option.exposure, float(self.exposure))
+        except Exception as e:
+            print(f"⚠️  设置曝光失败: {e}")
 
-            self.cv_bridge = CvBridge()
-
-            # 创建 ROS2 节点（如果还没有）
-            if not rclpy.ok():
-                rclpy.init()
-
-            # 创建临时节点用于订阅
-            class CameraNode(Node):
-                def __init__(self, parent):
-                    super().__init__(f'{parent.camera_name}_camera_node')
-                    self.parent = parent
-                    self.subscription = self.create_subscription(
-                        Image,
-                        parent.topic,
-                        self.image_callback,
-                        10
-                    )
-
-                def image_callback(self, msg):
-                    # 转换 ROS Image 到 OpenCV
-                    cv_image = self.parent.cv_bridge.imgmsg_to_cv2(msg, 'rgb8')
-                    # Resize
-                    resized = cv2.resize(cv_image, self.parent.target_size[::-1])
-                    self.parent.latest_image = resized
-                    self.parent._ready = True
-
-            self.node = CameraNode(self)
-            print(f"✓ RealSenseCamera '{self.camera_name}' 已启动")
-
-        except ImportError as e:
-            print(f"✗ RealSense 依赖缺失: {e}")
-            print("  请安装: pip install cv_bridge")
-            raise
+        self.align = rs.align(rs.stream.color)
+        self._ready = True
+        print(f"✓ RealSenseCamera '{self.camera_name}' 已启动")
 
     def stop(self):
         """停止相机"""
-        if hasattr(self, 'node'):
-            self.node.destroy_node()
+        if self.pipe is not None:
+            try:
+                self.pipe.stop()
+            except Exception:
+                pass
         self._ready = False
         print(f"✓ RealSenseCamera '{self.camera_name}' 已停止")
 
     def get_image(self) -> np.ndarray:
         """获取最新图像"""
-        if self.latest_image is None:
-            # 返回黑色图像
+        if not self._ready:
             return np.zeros((*self.target_size, 3), dtype=np.uint8)
-        return self.latest_image.copy()
+        try:
+            frames = self.pipe.wait_for_frames()
+            frames = self.align.process(frames)
+            color_frame = frames.get_color_frame()
+            if not color_frame:
+                return np.zeros((*self.target_size, 3), dtype=np.uint8)
+            image = np.asanyarray(color_frame.get_data())
+            # BGR to RGB
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image = cv2.resize(image, (self.target_size[1], self.target_size[0]))
+            self.latest_image = image
+            return image
+        except Exception as e:
+            print(f"⚠️  RealSense 读取失败: {e}")
+            return np.zeros((*self.target_size, 3), dtype=np.uint8)
 
     def is_ready(self) -> bool:
         """相机是否就绪"""

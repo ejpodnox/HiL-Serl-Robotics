@@ -4,7 +4,7 @@
 robot:
   # 机器人基本参数
   ip: "192.168.8.10"
-  dof: 8
+  dof: 7
   gripper_dof: 1
 
   # 关节限制 (根据Kinova Gen3手册)
@@ -18,19 +18,15 @@ robot:
   # Home位置 (安全起始位置)
   home_position: [0.0, 0.26, 0.0, -1.57, 0.0, 1.31, 0.0]
 
-# ============ VisionPro Configuration ============
-visionpro:
-  # VisionPro IP地址（用于遥操作数据收集）
-  ip: "192.168.1.125"
-  use_right_hand: true  # 使用右手还是左手
-
 # ============ ROS2 Topics ============
 ros2:
   # Topic names (明天测试时可能需要调整)
   joint_state_topic: "/joint_states"
+  trajectory_command_topic: "/joint_trajectory_controller/joint_trajectory"
   velocity_command_topic: "/velocity_controller/commands"
+  twist_command_topic: "/twist_controller/commands"  # Cartesian twist控制
   gripper_command_topic: "/gripper_controller/gripper_cmd/goal"
-  
+
   # 节点名称
   node_name: "kinova_rl_env"
 
@@ -63,11 +59,11 @@ observation:
 # ============ Action Space ============
 action:
   # Action类型
-  type: "joint_velocity"  # "joint_velocity" or "joint_position"
-  
+  type: "joint_velocity"  # "joint_velocity", "joint_position", or "cartesian_twist"
+
   # Action维度
-  dim: 7  # 7个关节 (Phase 2不包括gripper)
-  
+  dim: 7  # 7个关节 (Phase 2不包括gripper)，或6 for cartesian_twist
+
   # Action范围 (归一化后)
   low: -1.0
   high: 1.0
@@ -114,7 +110,7 @@ reward:
 # ============ Camera Configuration ============
 camera:
   enabled: true  # 启用相机
-  backend: "webcam"  # 相机后端: "webcam" (USB相机), "realsense" (RealSense), "dummy" (测试)
+  backend: "realsense"  # 相机后端: "webcam" (USB相机), "realsense" (RealSense), "dummy" (测试)
 
   # USB 相机配置 (backend: "webcam")
   # Search your camera by: v4l2-ctl --list-devices
@@ -130,9 +126,9 @@ camera:
   # RealSense 相机配置 (backend: "realsense")
   realsense_cameras:
     wrist_1:
-      serial_number: null  # 留空自动检测，或填写序列号
+      serial_number: "336222070590"  # 留空自动检测，或填写序列号
       topic: "/camera/wrist_1/color/image_raw"
-      image_size: [128, 128]
+      image_size: [480, 640]  # D435I 支持的分辨率 (height, width)
     # wrist_2:
     #   serial_number: null
     #   topic: "/camera/wrist_2/color/image_raw"
@@ -144,7 +140,7 @@ camera:
       image_size: [128, 128]
 
   # 图像处理参数
-  image_size: [128, 128]  # 默认图像尺寸 (height, width)
+  image_size: [480, 640]  # 默认图像尺寸 (height, width) - RealSense D435I 支持的分辨率
   crop: null  # 如果需要裁剪: [y_min, y_max, x_min, x_max]
   color_mode: "RGB"  # "RGB" or "BGR"
   normalize: false  # 是否归一化到 [0, 1]

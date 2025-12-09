@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
 """
-策略部署脚本 for Kinova
+策略部署脚本 for Kinova（ROS2 + SpaceMouse 或纯策略）
 
 支持多种部署模式：
 1. 纯策略控制（policy_only）
-2. 混合控制（hybrid: VisionPro + Policy）
-3. 在线评估（evaluation）
+2. 混合控制（hybrid: SpaceMouse + Policy）
+3. 纯遥操作（teleop_only: SpaceMouse）
+4. 在线评估（evaluation）
 
 使用方法:
     # 纯策略控制
     python deploy_policy.py --checkpoint checkpoints/bc_kinova/best_model.pt \
                             --mode policy_only
 
-    # 混合控制
+    # 混合控制（SpaceMouse）
     python deploy_policy.py --checkpoint checkpoints/bc_kinova/best_model.pt \
                             --mode hybrid --alpha 0.5
+
+    # 纯遥操作（SpaceMouse）
+    python deploy_policy.py --checkpoint checkpoints/bc_kinova/best_model.pt \
+                            --mode teleop_only
 
     # 在线评估
     python deploy_policy.py --checkpoint checkpoints/bc_kinova/best_model.pt \
@@ -30,9 +35,6 @@ import rclpy
 
 from kinova_rl_env.kinova_env.kinova_env import KinovaEnv
 from kinova_rl_env.kinova_env.config_loader import KinovaConfig
-from vision_pro_control.core.visionpro_bridge import VisionProBridge
-from vision_pro_control.core.coordinate_mapper import CoordinateMapper
-from vision_pro_control.utils.keyboard_monitor import KeyboardMonitor
 
 # 导入训练脚本中的策略网络
 from hil_serl_kinova.train_bc_kinova import BCPolicy
@@ -46,7 +48,10 @@ class PolicyDeployer:
         checkpoint_path: str,
         env_config_path: str,
         mode: str = 'policy_only',
-        device: str = 'cuda'
+        device: str = 'cuda',
+        spacemouse_translation_gain: float = 0.6,
+        spacemouse_rotation_gain: float = 0.6,
+        spacemouse_deadband: float = 0.02,
     ):
         """
         Args:
@@ -60,6 +65,7 @@ class PolicyDeployer:
 
         print(f"部署模式: {mode}")
         print(f"使用设备: {self.device}")
+        print("遥操作来源: spacemouse")
 
         # 加载策略
         self.policy = self._load_policy(checkpoint_path)
@@ -68,12 +74,15 @@ class PolicyDeployer:
         config = KinovaConfig.from_yaml(env_config_path)
         self.env = KinovaEnv(config=config)
 
-        # 如果是混合模式，初始化 VisionPro
-        self.vp_bridge = None
-        self.mapper = None
+        # 遥操作设备（仅 SpaceMouse）
+        self.spacemouse = None
+        self.sm_gripper = 0.0
+        self.sm_translation_gain = spacemouse_translation_gain
+        self.sm_rotation_gain = spacemouse_rotation_gain
+        self.sm_deadband = spacemouse_deadband
 
-        if mode == 'hybrid':
-            self._init_visionpro()
+        if mode in ('hybrid', 'teleop_only'):
+            self._init_spacemouse()
 
         print("✓ 策略部署器初始化完成")
 
@@ -102,29 +111,16 @@ class PolicyDeployer:
 
         return policy
 
-    def _init_visionpro(self):
-        """初始化 VisionPro（混合模式）"""
-        import yaml
+    def _init_spacemouse(self):
+        """初始化 SpaceMouse 遥操作"""
+        try:
+            from serl_robot_infra.franka_env.spacemouse.spacemouse_expert import SpaceMouseExpert
+        except ImportError as exc:
+            raise ImportError("SpaceMouse 依赖未安装，请运行: pip install pyspacemouse hidapi") from exc
 
-        # 加载 VisionPro 配置
-        vp_config_path = Path(__file__).parent.parent / "vision_pro_control/config/teleop_config.yaml"
-
-        with open(vp_config_path, 'r') as f:
-            vp_config = yaml.safe_load(f)
-
-        self.vp_bridge = VisionProBridge(
-            avp_ip=vp_config['visionpro']['ip'],
-            use_right_hand=vp_config['visionpro']['use_right_hand']
-        )
-
-        calibration_file = Path(__file__).parent.parent / vp_config['calibration']['file']
-        self.mapper = CoordinateMapper(calibration_file=calibration_file)
-
-        # 启动
-        self.vp_bridge.start()
-        time.sleep(1.0)
-
-        print("✓ VisionPro 已初始化")
+        self.spacemouse = SpaceMouseExpert()
+        self.sm_gripper = 0.0
+        print("✓ SpaceMouse 已初始化")
 
     def _obs_to_tensor(self, obs):
         """
@@ -178,37 +174,33 @@ class PolicyDeployer:
 
         return action
 
-    def _get_visionpro_action(self, dt=0.05):
+    def _get_spacemouse_action(self):
         """
-        获取 VisionPro 动作
+        获取 SpaceMouse 动作
 
-        Args:
-            dt: 时间步长
         Returns:
             action: numpy array (7,)
         """
-        # 获取手部位姿
-        position, rotation = self.vp_bridge.get_hand_relative_to_head()
+        if self.spacemouse is None:
+            raise RuntimeError("SpaceMouse 未初始化")
 
-        # 映射到 Twist
-        twist = self.mapper.map_to_twist(position, rotation)
+        raw_action, buttons = self.spacemouse.get_action()
+        action_vec = np.array(raw_action, dtype=np.float32)
+        action_vec[np.abs(action_vec) < self.sm_deadband] = 0.0
 
-        # Twist → Action (delta pose)
-        action = np.array([
-            twist['linear']['x'] * dt,
-            twist['linear']['y'] * dt,
-            twist['linear']['z'] * dt,
-            twist['angular']['x'] * dt,
-            twist['angular']['y'] * dt,
-            twist['angular']['z'] * dt,
-            0.0  # gripper (暂不使用)
-        ], dtype=np.float32)
+        linear = action_vec[:3] * self.sm_translation_gain
+        angular = action_vec[3:6] * self.sm_rotation_gain
+        delta = np.concatenate([linear, angular])
+        delta = np.clip(delta, -1.0, 1.0)
 
-        # Gripper
-        pinch_distance = self.vp_bridge.get_pinch_distance()
-        gripper_position = np.clip(1.0 - (pinch_distance - 0.01) / 0.07, 0.0, 1.0)
-        action[6] = gripper_position
+        # 按住左键闭合，右键打开；否则保持上一次值
+        if buttons:
+            if buttons[0]:
+                self.sm_gripper = 1.0
+            elif len(buttons) > 1 and buttons[1]:
+                self.sm_gripper = 0.0
 
+        action = np.concatenate([delta, np.array([self.sm_gripper], dtype=np.float32)])
         return action
 
     def run_episode(self, max_steps=200, alpha=0.5):
@@ -217,7 +209,7 @@ class PolicyDeployer:
 
         Args:
             max_steps: 最大步数
-            alpha: 混合系数（alpha=1: 纯 VisionPro，alpha=0: 纯策略）
+            alpha: 混合系数（alpha=1: 纯人工输入，alpha=0: 纯策略）
         Returns:
             episode_info: dict
         """
@@ -235,8 +227,10 @@ class PolicyDeployer:
                 action = self._get_policy_action(obs)
             elif self.mode == 'hybrid':
                 policy_action = self._get_policy_action(obs)
-                vp_action = self._get_visionpro_action()
-                action = alpha * vp_action + (1 - alpha) * policy_action
+                teleop_action = self._get_spacemouse_action()
+                action = alpha * teleop_action + (1 - alpha) * policy_action
+            elif self.mode == 'teleop_only':
+                action = self._get_spacemouse_action()
             else:
                 raise ValueError(f"未知模式: {self.mode}")
 
@@ -337,6 +331,12 @@ class PolicyDeployer:
         if self.vp_bridge is not None:
             self.vp_bridge.stop()
 
+        if self.spacemouse is not None:
+            try:
+                self.spacemouse.close()
+            except Exception:
+                pass
+
         self.env.close()
 
         print("✓ 资源已清理")
@@ -352,7 +352,7 @@ def main():
                         default='kinova_rl_env/config/kinova_config.yaml',
                         help='环境配置路径')
     parser.add_argument('--mode', type=str, default='policy_only',
-                        choices=['policy_only', 'hybrid', 'evaluation'],
+                        choices=['policy_only', 'hybrid', 'evaluation', 'teleop_only'],
                         help='部署模式')
     parser.add_argument('--alpha', type=float, default=0.5,
                         help='混合系数（hybrid 模式）')
@@ -364,6 +364,12 @@ def main():
                         help='设备（cuda/cpu）')
     parser.add_argument('--interactive', action='store_true',
                         help='交互式运行')
+    parser.add_argument('--sm_translation_gain', type=float, default=0.6,
+                        help='SpaceMouse 平移增益')
+    parser.add_argument('--sm_rotation_gain', type=float, default=0.6,
+                        help='SpaceMouse 旋转增益')
+    parser.add_argument('--sm_deadband', type=float, default=0.02,
+                        help='SpaceMouse 死区')
 
     args = parser.parse_args()
 
@@ -372,7 +378,10 @@ def main():
         checkpoint_path=args.checkpoint,
         env_config_path=args.env_config,
         mode=args.mode,
-        device=args.device
+        device=args.device,
+        spacemouse_translation_gain=args.sm_translation_gain,
+        spacemouse_rotation_gain=args.sm_rotation_gain,
+        spacemouse_deadband=args.sm_deadband,
     )
 
     try:

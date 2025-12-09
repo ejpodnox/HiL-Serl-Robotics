@@ -56,21 +56,6 @@ else
     echo "✓ ROS2 $ROS_DISTRO 已安装"
 fi
 
-# VisionProTeleop 检查
-echo ""
-echo "检查 VisionProTeleop..."
-if python3 -c "import VisionProTeleop" 2>/dev/null; then
-    echo "✓ VisionProTeleop 已安装"
-else
-    echo "⚠️  VisionProTeleop 未安装"
-    echo ""
-    echo "VisionProTeleop 用于 Apple Vision Pro 遥操作"
-    echo "如果你没有 VisionPro 硬件，可以跳过"
-    echo ""
-    echo "如果需要安装，请查看:"
-    echo "  docs/INSTALLATION.md - VisionPro 安装指南"
-fi
-
 # 完成
 echo ""
 echo "========================================"
@@ -78,8 +63,5 @@ echo "✓ 安装完成！"
 echo "========================================"
 echo ""
 echo "快速测试："
-echo "  python tools/quick_verify.py --skip-vp --skip-robot --skip-camera"
-echo ""
-echo "完整文档："
-echo "  cat QUICKSTART.md"
+echo "  python tests/run_all_tests.py --skip-hardware"
 echo ""

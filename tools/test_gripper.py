@@ -159,10 +159,26 @@ class GripperTester:
         print("  'q' - 退出")
         print("=" * 60)
 
-        from vision_pro_control.utils.keyboard_monitor import KeyboardMonitor
-
         try:
-            with KeyboardMonitor() as kb:
+            import select, sys, termios, tty
+
+            class _KeyboardMonitor:
+                def __enter__(self):
+                    self.fd = sys.stdin.fileno()
+                    self.old_settings = termios.tcgetattr(self.fd)
+                    tty.setcbreak(self.fd)
+                    return self
+
+                def __exit__(self, exc_type, exc_val, exc_tb):
+                    termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old_settings)
+
+                def get_key(self, timeout=0.1):
+                    rlist, _, _ = select.select([sys.stdin], [], [], timeout)
+                    if rlist:
+                        return sys.stdin.read(1)
+                    return None
+
+            with _KeyboardMonitor() as kb:
                 while True:
                     key = kb.get_key(timeout=0.1)
 

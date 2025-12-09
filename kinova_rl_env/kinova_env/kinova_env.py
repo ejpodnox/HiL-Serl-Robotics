@@ -34,7 +34,23 @@ class KinovaEnv(gym.Env):
         self.max_episode_steps = self.config.control.max_episode_steps
 
         # 机器人接口
-        self.interface = KinovaInterface(node_name=self.config.ros2.node_name)
+        joint_names = getattr(self.config.robot, "joint_names", None)
+        # 选择控制话题：优先 trajectory_command_topic，其次 velocity_command_topic
+        traj_topic = self.config.ros2.get(
+            'trajectory_command_topic',
+            self.config.ros2.get('velocity_command_topic', '/joint_trajectory_controller/joint_trajectory'),
+        )
+
+        self.interface = KinovaInterface(
+            node_name=self.config.ros2.node_name,
+            joint_state_topic=self.config.ros2.get('joint_state_topic', '/joint_states'),
+            trajectory_topic=traj_topic,
+            twist_topic=self.config.ros2.get('twist_command_topic', '/twist_controller/commands'),
+            gripper_command_topic=self.config.ros2.get('gripper_command_topic', '/robotiq_gripper_controller/gripper_cmd'),
+            base_frame=self.config.ros2.get('base_frame', 'base_link'),
+            tool_frame=self.config.ros2.get('tool_frame', 'tool_frame'),
+            joint_names=joint_names,
+        )
 
         # 相机接口
         self.cameras = {}
@@ -105,13 +121,15 @@ class KinovaEnv(gym.Env):
                     print(f"  ✓ {cam_name}: USB 相机 (ID={cam_cfg['device_id']})")
 
             elif backend == "realsense":
-                # RealSense 相机
+                # RealSense 相机（本地 pyrealsense2）
                 for cam_name, cam_cfg in self.config.camera.realsense_cameras.items():
                     camera = RealSenseCamera(
                         camera_name=cam_name,
-                        topic=cam_cfg.get('topic'),
                         serial_number=cam_cfg.get('serial_number'),
-                        target_size=tuple(cam_cfg['image_size'])
+                        target_size=tuple(cam_cfg['image_size']),
+                        fps=cam_cfg.get('fps', 30),
+                        exposure=cam_cfg.get('exposure', 40000),
+                        enable_depth=cam_cfg.get('depth', False),
                     )
                     camera.start()
                     self.cameras[cam_name] = camera
@@ -121,7 +139,8 @@ class KinovaEnv(gym.Env):
                 # 虚拟相机（测试用）
                 for cam_name, cam_cfg in self.config.camera.dummy_cameras.items():
                     camera = DummyCamera(
-                        image_size=tuple(cam_cfg['image_size'])
+                        target_size=tuple(cam_cfg['image_size']),
+                        mode=cam_cfg.get('mode', 'noise'),
                     )
                     camera.start()
                     self.cameras[cam_name] = camera

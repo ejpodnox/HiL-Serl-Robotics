@@ -16,7 +16,7 @@ gymnasium>=0.28.0
 
 # ============ Computer Vision ============
 opencv-python>=4.5.0
-# pyrealsense2>=2.50.0  # 如果使用 RealSense 相机，取消注释
+pyrealsense2>=2.50.0  # 如果使用 RealSense 相机
 
 # ============ Visualization ============
 matplotlib>=3.3.0
@@ -30,13 +30,15 @@ pillow>=8.0.0
 # ============ Utilities ============
 tqdm>=4.60.0
 tabulate>=0.8.9
+pyspacemouse>=1.0.3
+hidapi>=0.14.0
+easyhid>=0.0.10
 
-# ============ Kinova API ============
-# Kortex Python API (用于直接控制机械臂，绕过 ROS2)
-# 安装方法: pip install kortex_api
-# 或从 https://github.com/Kinovarobotics/kortex 下载
-kortex_api>=2.3.0
-scipy>=1.7.0  # 用于四元数转换
+# ============ IK / Teleop (Cartesian) ============
+kdl_parser_py>=2.0.0
+urdf-parser-py>=0.0.4
+pin>=2.9.0  # Pinocchio (use pip in conda env)
+# PyKDL is typically installed via apt: sudo apt install python3-pykdl
 
 # ============ Development (Optional) ============
 # pytest>=6.0.0
@@ -46,7 +48,4 @@ scipy>=1.7.0  # 用于四元数转换
 # isort>=5.9.0
 # mypy>=0.910
 
-# ============ VisionPro (如果有硬件) ============
-# 注意：VisionProTeleop 需要手动安装
-# 如果你没有 VisionPro 硬件，可以跳过这个包
 # 安装方法请参考: docs/INSTALLATION.md

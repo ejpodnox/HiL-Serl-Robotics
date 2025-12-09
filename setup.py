@@ -18,7 +18,7 @@ setup(
     name="kinova-hil-serl",
     version="1.0.0",
     author="Kinova HIL-SERL Team",
-    description="Human-in-the-Loop Self-supervised RL for Kinova Gen3 with VisionPro Teleoperation",
+    description="Human-in-the-Loop Self-supervised RL for Kinova Gen3 (ROS2 control)",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/yourusername/kinova-hil-serl",
@@ -55,6 +55,8 @@ setup(
         # Utilities
         "tqdm>=4.60.0",
         "tabulate>=0.8.9",
+        "pyspacemouse>=1.0.3",
+        "hidapi>=0.14.0",
     ],
 
     extras_require={
@@ -71,8 +73,8 @@ setup(
     entry_points={
         "console_scripts": [
             # Data Collection
-            "kinova-record-teleop=vision_pro_control.record_teleop_demos:main",
             "kinova-record-demos=kinova_rl_env.record_kinova_demos:main",
+            "kinova-record-spacemouse=kinova_rl_env.record_spacemouse_demos:main",
             "kinova-record-labels=hil_serl_kinova.record_success_fail_demos:main",
 
             # Training
@@ -103,7 +105,6 @@ setup(
 
     include_package_data=True,
     package_data={
-        "vision_pro_control": ["config/*.yaml"],
         "kinova_rl_env": ["config/*.yaml"],
         "hil_serl_kinova": ["experiments/*/config.py"],
     },

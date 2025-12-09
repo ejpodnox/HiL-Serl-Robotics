@@ -93,12 +93,11 @@ def main():
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='显示详细输出')
     parser.add_argument('--test', type=str,
-                        choices=['visionpro', 'kinova', 'camera', 'env',
-                                'data', 'training', 'all'],
+                        choices=['camera', 'env', 'data', 'training', 'all'],
                         default='all',
                         help='选择要运行的测试')
     parser.add_argument('--skip-hardware', action='store_true',
-                        help='跳过所有硬件连接测试')
+                        help='跳过所有硬件连接测试（保留参数兼容性）')
 
     args = parser.parse_args()
 
@@ -106,14 +105,6 @@ def main():
 
     # 定义测试列表
     tests = []
-
-    if args.test in ['visionpro', 'all']:
-        test_args = ['--skip-connection'] if args.skip_hardware else []
-        tests.append(('VisionPro 连接', 'test_visionpro_connection.py', test_args))
-
-    if args.test in ['kinova', 'all']:
-        test_args = ['--skip-connection'] if args.skip_hardware else []
-        tests.append(('Kinova 连接', 'test_kinova_connection.py', test_args))
 
     if args.test in ['camera', 'all']:
         tests.append(('相机模块', 'test_camera.py', ['--backend', 'dummy']))

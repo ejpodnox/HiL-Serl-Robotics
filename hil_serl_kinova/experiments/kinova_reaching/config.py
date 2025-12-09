@@ -24,23 +24,16 @@ def get_config():
 
     # 从配置文件读取默认 IP
     default_robot_ip = "192.168.8.10"
-    default_vp_ip = "192.168.1.125"
     try:
         from kinova_rl_env.kinova_env.config_loader import KinovaConfig
         kinova_config = KinovaConfig.from_yaml(config.env_config_path)
         default_robot_ip = kinova_config.robot.ip
-        if hasattr(kinova_config, 'visionpro') and hasattr(kinova_config.visionpro, 'ip'):
-            default_vp_ip = kinova_config.visionpro.ip
     except Exception:
         pass
 
     # Kinova 机械臂参数
     config.robot_ip = default_robot_ip
     config.robot_dof = 7
-
-    # VisionPro 遥操作（数据收集用）
-    config.visionpro_ip = default_vp_ip
-    config.use_right_hand = True
 
     # 目标位姿（在 base_link 坐标系下）
     config.target_pose = [0.5, 0.0, 0.3, 0.0, 1.0, 0.0, 0.0]  # [x, y, z, qx, qy, qz, qw]

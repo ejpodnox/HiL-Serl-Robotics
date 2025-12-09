@@ -12,11 +12,6 @@ tests/
 ├── unit/                   # 单元测试
 │   └── test_demo_format.py          # Demo数据格式验证
 │
-├── visionpro/              # VisionPro测试
-│   ├── test_visionpro_bridge.py     # VisionPro连接测试
-│   ├── test_calibration.py          # 校准测试
-│   └── test_teleop.py               # 遥操作测试
-│
 ├── integration/            # 集成测试
 │   └── test_teleop_all.py           # 完整遥操作集成测试
 │
@@ -53,9 +48,6 @@ cd kinova_rl_env
 
 # 仅运行单元测试
 ./tests/run_all_tests.sh unit
-
-# 仅运行VisionPro测试（需要硬件）
-./tests/run_all_tests.sh visionpro
 
 # 仅运行集成测试
 ./tests/run_all_tests.sh integration
@@ -123,57 +115,22 @@ python tests/unit/test_demo_format.py --demo_path demos/reaching/demo_000.pkl
 
 ---
 
-### 3. VisionPro测试 (VisionPro Tests)
-
-测试VisionPro集成和遥操作功能。
-
-**前置条件：**
-- VisionPro已连接到同一WiFi
-- Tracking Streamer应用正在运行
-- 知道VisionPro的IP地址
-
-**测试内容：**
-- ✅ VisionPro数据接收
-- ✅ 手部追踪
-- ✅ Pinch检测
-- ✅ 校准流程
-- ✅ 遥操作控制
-
-**单独运行：**
-```bash
-# VisionPro连接测试
-python tests/visionpro/test_visionpro_bridge.py
-
-# 校准测试
-python tests/visionpro/test_calibration.py
-
-# 遥操作测试
-python tests/visionpro/test_teleop.py
-```
-
----
-
-### 4. 集成测试 (Integration Tests)
+### 3. 集成测试 (Integration Tests)
 
 测试完整的数据收集和控制流程。
 
 **前置条件：**
 - 所有硬件测试通过
 - 所有单元测试通过
-- VisionPro已校准
 
 **测试内容：**
-- ✅ VisionPro + Kinova 完整遥操作
 - ✅ 数据收集流程
 - ✅ 端到端控制链路
 
 **单独运行：**
 ```bash
-# 完整遥操作测试
-python tests/integration/test_teleop_all.py
-
 # 数据收集流程测试（收集1条demo）
-python record_kinova_demos.py --save_dir ./demos --num_demos 1 --task reaching
+python kinova_rl_env/record_spacemouse_demos.py --save_dir ./demos --num_demos 1 --task reaching
 ```
 
 ---
@@ -254,20 +211,7 @@ ros2 run tf2_ros tf2_echo base_link <TAB>  # 按TAB补全
 # self.tool_frame = 'tool_frame'  # 你的末端坐标系名称
 ```
 
-### 问题4：VisionPro连接失败
-
-**症状：**
-```
-Connecting VisionPro... (卡住)
-```
-
-**解决：**
-1. 检查VisionPro和电脑在同一WiFi
-2. 检查IP地址：`ping 192.168.1.125`
-3. 确保VisionPro上的Tracking Streamer应用正在运行
-4. 检查防火墙设置
-
-### 问题5：未找到demo文件
+### 问题4：未找到demo文件
 
 **症状：**
 ```
@@ -277,7 +221,7 @@ Connecting VisionPro... (卡住)
 **解决：**
 ```bash
 # 收集演示数据
-python record_kinova_demos.py --save_dir ./demos --num_demos 10 --task reaching
+python kinova_rl_env/record_spacemouse_demos.py --save_dir ./demos --num_demos 10 --task reaching
 ```
 
 ---
@@ -305,23 +249,14 @@ ros2 launch kortex_bringup kortex_control.launch.py robot_ip:=192.168.1.10
 ./tests/run_all_tests.sh unit
 ```
 
-### 阶段3：VisionPro测试（可选，需要硬件）
-
-```bash
-# 手动运行VisionPro测试
-python tests/visionpro/test_visionpro_bridge.py
-python tests/visionpro/test_calibration.py
-```
-
-### 阶段4：数据收集（生产环境）
+### 阶段3：数据收集（生产环境）
 
 ```bash
 # 收集演示数据
-python record_kinova_demos.py \
+python kinova_rl_env/record_spacemouse_demos.py \
     --save_dir ./demos \
     --num_demos 10 \
-    --task reaching \
-    --vp_ip 192.168.1.125
+    --task reaching
 
 # 验证数据格式
 python tests/unit/test_demo_format.py --demo_path demos/reaching/demo_000.pkl
@@ -330,7 +265,7 @@ python tests/unit/test_demo_format.py --demo_path demos/reaching/demo_000.pkl
 python tests/utils/save_demo_utils.py --batch_convert demos/reaching
 ```
 
-### 阶段5：训练RL策略（未来）
+### 阶段4：训练RL策略（未来）
 
 ```bash
 # 参考 hil-serl 文档
@@ -345,8 +280,7 @@ python tests/utils/save_demo_utils.py --batch_convert demos/reaching
 
 1. **ROS2话题是否正常：** `ros2 topic echo /joint_states`
 2. **TF是否正常：** `ros2 run tf2_ros tf2_echo base_link tool_frame`
-3. **VisionPro数据是否正常：** 运行 `tests/visionpro/test_visionpro_bridge.py`
-4. **配置文件是否正确：** 检查 `config/kinova_config.yaml`
+3. **配置文件是否正确：** 检查 `config/kinova_config.yaml`
 
 ---
 

@@ -38,6 +38,7 @@ class KinovaConfig:
         self.observation = self._DictWrapper(config_dict.get('observation', {}))
         self.action = self._DictWrapper(config_dict.get('action', {}))
         self.reward = self._DictWrapper(config_dict.get('reward', {}))
+        self.task = self._DictWrapper(config_dict.get('task', {}))
         self.camera = self._DictWrapper(config_dict.get('camera', {}))
         self.logging = self._DictWrapper(config_dict.get('logging', {}))
         self.debug = self._DictWrapper(config_dict.get('debug', {}))
@@ -61,6 +62,9 @@ class KinovaConfig:
         
         def get(self, key, default=None):
             return self._dict.get(key, default)
+
+        def items(self):
+            return self._dict.items()
     
     @classmethod
     def from_yaml(

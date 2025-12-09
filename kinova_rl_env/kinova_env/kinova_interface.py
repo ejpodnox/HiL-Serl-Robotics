@@ -8,11 +8,14 @@ import rclpy
 from rclpy.node import Node
 from rclpy.duration import Duration
 from rclpy.action import ActionClient
+from rclpy.executors import SingleThreadedExecutor
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 import numpy as np
 from std_msgs.msg import Float64
+from std_msgs.msg import Float64MultiArray
 from sensor_msgs.msg import Image
+from geometry_msgs.msg import Twist
 import cv2
 from control_msgs.action import GripperCommand
 
@@ -20,16 +23,23 @@ from control_msgs.action import GripperCommand
 from tf2_ros import Buffer, TransformListener, LookupException, ConnectivityException, ExtrapolationException
 from scipy.spatial.transform import Rotation as R
 
-# 打开摄像头 (0是默认摄像头，可能是1或2)
-cap = cv2.VideoCapture(0)
-
 
 class KinovaInterface:
     """
     Kinova机器人的ROS2接口封装
     """
 
-    def __init__(self, node_name='kinova_interface'):
+    def __init__(
+        self,
+        node_name: str = 'kinova_interface',
+        joint_state_topic: str = '/joint_states',
+        trajectory_topic: str = '/joint_trajectory_controller/joint_trajectory',
+        twist_topic: str = '/twist_controller/commands',
+        gripper_command_topic: str = '/robotiq_gripper_controller/gripper_cmd',
+        base_frame: str = 'base_link',
+        tool_frame: str = 'tool_frame',
+        joint_names=None,
+    ):
         self.node_name = node_name
         self.node = None
 
@@ -39,31 +49,53 @@ class KinovaInterface:
         self._latest_tcp_velocity = None  # 缓存TCP速度
 
         # 配置
-        self.joint_state_topic = '/joint_states'
-        self.trajectory_topic = '/joint_trajectory_controller/joint_trajectory'
-        self.num_joints = 7
-        self.joint_names = [
+        self.joint_state_topic = joint_state_topic
+        self.trajectory_topic = trajectory_topic
+        self.twist_topic = twist_topic
+        self.joint_names = joint_names or [
             'joint_1', 'joint_2', 'joint_3', 'joint_4',
             'joint_5', 'joint_6', 'joint_7'
         ]
+        self.num_joints = len(self.joint_names)
 
-        self.gripper_command_topic = '/robotiq_gripper_controller/gripper_cmd'
+        self.gripper_command_topic = gripper_command_topic
         self._gripper_state = 0.0  # 缓存gripper位置
         self._gripper_action_client = None
         self.gripper_available = False
 
         # TF2配置
-        self.base_frame = 'base_link'  # 基座坐标系
-        self.tool_frame = 'tool_frame'  # 末端坐标系（可能是 'end_effector_link' 或 'tool_frame'）
+        self.base_frame = base_frame  # 基座坐标系
+        self.tool_frame = tool_frame  # 末端坐标系
         self._tf_buffer = None
         self._tf_listener = None
-
-        # 相机配置
-        self.camera_id = 0  # USB摄像头ID
-        self._cap = None
+        self._executor = None
+        self._missing_joint_warned = False
     
     def _joint_state_callback(self, msg):
         self._latest_joint_state = msg
+
+    def _get_mapped_joint_state(self):
+        """
+        Return joint positions/velocities ordered by self.joint_names.
+        """
+        if self._latest_joint_state is None:
+            return None
+        name_to_idx = {n: i for i, n in enumerate(self._latest_joint_state.name)}
+        positions = []
+        velocities = []
+        for jn in self.joint_names:
+            if jn not in name_to_idx:
+                if not self._missing_joint_warned:
+                    print(f"未在 joint_states 中找到关节 {jn}，请检查控制器 joint_names")
+                    self._missing_joint_warned = True
+                return None
+            idx = name_to_idx[jn]
+            positions.append(self._latest_joint_state.position[idx])
+            if idx < len(self._latest_joint_state.velocity):
+                velocities.append(self._latest_joint_state.velocity[idx])
+            else:
+                velocities.append(0.0)
+        return np.array(positions), np.array(velocities)
     
     def connect(self):
         """初始化ROS2连接和所有订阅/发布者"""
@@ -71,6 +103,8 @@ class KinovaInterface:
             rclpy.init()
 
         self.node = Node(self.node_name)
+        self._executor = SingleThreadedExecutor()
+        self._executor.add_node(self.node)
 
         # 订阅关节状态
         self._state_sub = self.node.create_subscription(
@@ -80,10 +114,26 @@ class KinovaInterface:
             10
         )
 
-        # 发布关节轨迹（使用 joint_trajectory_controller）
-        self._trajectory_pub = self.node.create_publisher(
-            JointTrajectory,
-            self.trajectory_topic,
+        # 发布关节指令（Trajectory 或 Velocity）
+        self._trajectory_pub = None
+        self._velocity_pub = None
+        if "trajectory" in self.trajectory_topic:
+            self._trajectory_pub = self.node.create_publisher(
+                JointTrajectory,
+                self.trajectory_topic,
+                10
+            )
+        else:
+            self._velocity_pub = self.node.create_publisher(
+                Float64MultiArray,
+                self.trajectory_topic,
+                10
+            )
+
+        # 发布Cartesian twist指令
+        self._twist_pub = self.node.create_publisher(
+            Twist,
+            self.twist_topic,
             10
         )
 
@@ -111,52 +161,59 @@ class KinovaInterface:
         import time
         end_time = time.time() + 2.0
         while time.time() < end_time:
-            rclpy.spin_once(self.node, timeout_sec=0.1)
-
-        # 初始化摄像头
-        self._cap = cv2.VideoCapture(self.camera_id)
-        if not self._cap.isOpened():
-            self.node.get_logger().warn("无法打开摄像头")
+            self._executor.spin_once(timeout_sec=0.1)
 
         self.node.get_logger().info(f"KinovaInterface已连接，监听TF: {self.base_frame} → {self.tool_frame}")
     
     def disconnect(self):
+        if self._executor:
+            try:
+                self._executor.remove_node(self.node)
+                self._executor.shutdown()
+            except Exception:
+                pass
+            self._executor = None
         self.node.destroy_node()
         rclpy.shutdown()
         self._latest_joint_state = None
-    
-        if self._cap is not None:
-            self._cap.release()
 
     def get_joint_state(self):
-        rclpy.spin_once(self.node, timeout_sec=0.01)
-        if self._latest_joint_state is None:
-            print("当前缓存为空！")
-            return
-        positions = self._latest_joint_state.position[:7]
-        velocites = self._latest_joint_state.velocity[:7]
-        return np.array(positions),np.array(velocites)
+        self._executor.spin_once(timeout_sec=0.01)
+        mapped = self._get_mapped_joint_state()
+        if mapped is None:
+            return None, None
+        return mapped
     
     def send_joint_velocities(self, velocities, dt=0.05):
         """
-        发送关节速度命令（使用 joint_trajectory_controller）
+        发送关节速度命令
+
+        如果绑定到 velocity_controller 则发布 Float64MultiArray；
+        如果绑定到 trajectory_controller 则发布 JointTrajectory 增量。
 
         Args:
             velocities: 7个关节的速度 (rad/s)
             dt: 轨迹执行时间（秒），应匹配控制周期。默认 0.05s (20Hz)
         """
-        if len(velocities) != 7:
-            raise ValueError(f"需要7个速度，收到{len(velocities)}个")
+        if len(velocities) != self.num_joints:
+            raise ValueError(f"需要{self.num_joints}个速度，收到{len(velocities)}个")
 
         # 获取当前关节位置
-        rclpy.spin_once(self.node, timeout_sec=0.01)
-        if self._latest_joint_state is None:
+        self._executor.spin_once(timeout_sec=0.01)
+        mapped = self._get_mapped_joint_state()
+        if mapped is None:
             return
-
-        current_positions = np.array(self._latest_joint_state.position[:7])
+        current_positions, _ = mapped
         joint_velocities = np.array(velocities)
 
-        # 创建轨迹消息
+        # 如果有velocity发布者，直接发布速度
+        if self._velocity_pub is not None:
+            msg = Float64MultiArray()
+            msg.data = [float(x) for x in joint_velocities]
+            self._velocity_pub.publish(msg)
+            return
+
+        # 否则作为轨迹增量发送
         trajectory = JointTrajectory()
         trajectory.joint_names = self.joint_names
 
@@ -170,18 +227,52 @@ class KinovaInterface:
         trajectory.points = [point]
         self._trajectory_pub.publish(trajectory)
 
-    def get_image(self):
-        """获取摄像头图像"""
-        if self._cap is None or not self._cap.isOpened():
-            return None
+    def send_joint_positions(self, positions, duration=3.0):
+        """
+        发送关节位置目标（使用 joint_trajectory_controller）
 
-        ret, frame = self._cap.read()
-        if not ret:
-            return None
+        Args:
+            positions: 目标关节位置列表/ndarray（长度=DOF）
+            duration: 到达目标所用时间（秒）
+        """
+        if len(positions) != self.num_joints:
+            raise ValueError(f"需要 {self.num_joints} 个关节位置，收到 {len(positions)} 个")
 
-        # BGR转RGB
-        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        return image
+        if self._trajectory_pub is None:
+            raise RuntimeError("当前配置未启用 trajectory 控制器，无法发送位置命令")
+
+        traj = JointTrajectory()
+        traj.joint_names = self.joint_names
+
+        point = JointTrajectoryPoint()
+        point.positions = [float(x) for x in positions]
+        point.velocities = [0.0] * self.num_joints
+        point.time_from_start.sec = int(duration)
+        point.time_from_start.nanosec = int((duration - int(duration)) * 1e9)
+
+        traj.points = [point]
+        self._trajectory_pub.publish(traj)
+
+    def send_cartesian_twist(self, twist_cmd):
+        """
+        发送Cartesian twist命令（Cartesian空间速度控制）
+
+        Args:
+            twist_cmd: np.ndarray shape (6,) -> [vx, vy, vz, wx, wy, wz]
+                      线速度 (m/s) + 角速度 (rad/s)
+        """
+        if len(twist_cmd) != 6:
+            raise ValueError(f"需要6个twist值，收到{len(twist_cmd)}个")
+
+        twist_msg = Twist()
+        twist_msg.linear.x = float(twist_cmd[0])
+        twist_msg.linear.y = float(twist_cmd[1])
+        twist_msg.linear.z = float(twist_cmd[2])
+        twist_msg.angular.x = float(twist_cmd[3])
+        twist_msg.angular.y = float(twist_cmd[4])
+        twist_msg.angular.z = float(twist_cmd[5])
+
+        self._twist_pub.publish(twist_msg)
 
     def get_tcp_pose(self):
         """
@@ -197,7 +288,7 @@ class KinovaInterface:
         - 这个变换就是TCP在基座坐标系下的位姿
         """
         # 先spin一次，更新TF buffer
-        rclpy.spin_once(self.node, timeout_sec=0.01)
+        self._executor.spin_once(timeout_sec=0.01)
 
         if self._tf_buffer is None:
             self.node.get_logger().warn("TF buffer未初始化")
@@ -205,12 +296,26 @@ class KinovaInterface:
 
         try:
             # 查询最新的变换（timeout=0表示获取最新）
-            transform = self._tf_buffer.lookup_transform(
-                self.base_frame,  # 目标坐标系
-                self.tool_frame,  # 源坐标系
-                rclpy.time.Time(),  # 最新时间
-                timeout=Duration(seconds=0.1)
-            )
+            candidate_frames = [self.tool_frame, "end_effector_link", "tool_link"]
+            transform = None
+            last_error = None
+            for frame in candidate_frames:
+                try:
+                    transform = self._tf_buffer.lookup_transform(
+                        self.base_frame,
+                        frame,
+                        rclpy.time.Time(),
+                        timeout=Duration(seconds=0.1),
+                    )
+                    # 更新当前tool_frame为有效的frame，减少后续警告
+                    self.tool_frame = frame
+                    break
+                except (LookupException, ConnectivityException, ExtrapolationException) as e:
+                    last_error = e
+                    continue
+
+            if transform is None:
+                raise last_error or LookupException("TF lookup failed")
 
             # 提取位置
             pos = np.array([

@@ -1,6 +1,6 @@
 #!/bin/bash
 # 统一测试运行器 - Kinova HIL-SERL 项目
-# 运行所有测试分类：硬件测试、单元测试、VisionPro测试、集成测试
+# 运行所有测试分类：硬件测试、单元测试、集成测试
 
 set -e  # 遇到错误立即退出
 
@@ -29,7 +29,7 @@ echo "项目根目录: $PROJECT_ROOT"
 echo ""
 
 # 解析参数
-TEST_CATEGORY="${1:-all}"  # all, hardware, unit, visionpro, integration
+TEST_CATEGORY="${1:-all}"  # all, hardware, unit, integration
 
 # ============================================================
 # 辅助函数
@@ -197,31 +197,13 @@ print(\"✓ KinovaEnv测试通过\")
 }
 
 # ============================================================
-# 3. VisionPro测试 (VisionPro Tests)
-# ============================================================
-
-run_visionpro_tests() {
-    echo ""
-    echo "=========================================="
-    echo "【3/4】VisionPro测试 (VisionPro Tests)"
-    echo "=========================================="
-
-    # 检查VisionPro是否可用（通过ping或配置文件）
-    # 注意：这些测试需要VisionPro硬件连接，默认跳过
-
-    skip_test "VisionPro Bridge测试" "需要VisionPro硬件（手动运行: python tests/visionpro/test_visionpro_bridge.py）"
-    skip_test "VisionPro校准测试" "需要VisionPro硬件（手动运行: python tests/visionpro/test_calibration.py）"
-    skip_test "VisionPro遥操作测试" "需要VisionPro硬件（手动运行: python tests/visionpro/test_teleop.py）"
-}
-
-# ============================================================
-# 4. 集成测试 (Integration Tests)
+# 3. 集成测试 (Integration Tests)
 # ============================================================
 
 run_integration_tests() {
     echo ""
     echo "=========================================="
-    echo "【4/4】集成测试 (Integration Tests)"
+    echo "【3/3】集成测试 (Integration Tests)"
     echo "=========================================="
 
     # 完整遥操作集成测试
@@ -232,7 +214,7 @@ run_integration_tests() {
     fi
 
     # 数据收集流程测试
-    skip_test "数据收集流程测试" "需要硬件和VisionPro（手动运行: python record_kinova_demos.py --num_demos 1）"
+    skip_test "数据收集流程测试" "需要硬件（手动运行: python kinova_rl_env/record_spacemouse_demos.py --num_demos 1）"
 }
 
 # ============================================================
@@ -246,21 +228,17 @@ case "$TEST_CATEGORY" in
     unit)
         run_unit_tests
         ;;
-    visionpro)
-        run_visionpro_tests
-        ;;
     integration)
         run_integration_tests
         ;;
     all)
         run_hardware_tests
         run_unit_tests
-        run_visionpro_tests
         run_integration_tests
         ;;
     *)
         echo -e "${RED}未知测试类别: $TEST_CATEGORY${NC}"
-        echo "用法: $0 [all|hardware|unit|visionpro|integration]"
+        echo "用法: $0 [all|hardware|unit|integration]"
         exit 1
         ;;
 esac
