@@ -1,0 +1,59 @@
+# VisionPro 遥操作安全配置（增强版）
+# 用于防止机械臂突然运动和安全错误
+
+# VisionPro 连接
+visionpro:
+  ip: "192.168.1.125"
+  use_right_hand: true
+
+# 机械臂连接
+robot:
+  ip: "192.168.8.10"
+
+# 标定文件
+calibration:
+  file: "config/calibration.yaml"
+
+# 坐标映射参数（降低增益，提高安全性）
+mapper:
+  position_gain: 0.15          # 位置增益（从0.3降到0.15，更保守）
+  rotation_gain: 0.15          # 旋转增益（从0.3降到0.15）
+  max_linear_velocity: 0.005   # Mapper内部最大线速度 (m/s) - 5mm/s 非常保守
+  max_angular_velocity: 0.02   # Mapper内部最大角速度 (rad/s)
+  filter_alpha: 0.1            # 滤波系数 (0-1)，0.1=非常平滑，响应慢但稳定
+
+# 控制参数（安全优先）
+control:
+  frequency: 20                # 控制频率 (Hz)
+  max_joint_velocity: 0.1      # 最大关节速度 (rad/s) - 从0.2降到0.1
+  jacobian_damping: 0.02       # 雅可比阻尼参数（增加稳定性）
+
+# 安全限制（双重保护）
+safety:
+  max_linear_velocity: 0.003   # 最终安全限速 (m/s) - 3mm/s 极保守
+  max_angular_velocity: 0.015  # 最终安全角速度 (rad/s)
+  enable_safety_check: true
+
+  # 启动保护：前N秒使用更低速度
+  startup_duration: 5.0        # 启动保护时长（秒）
+  startup_velocity_scale: 0.3  # 启动期间速度缩放（30%）
+
+# 夹爪控制
+gripper:
+  control_mode: "continuous"
+  pinch_distance_open: 0.08
+  pinch_distance_close: 0.01
+  gripper_open_position: 0.0
+  gripper_close_position: 0.8
+  max_effort: 100.0
+  update_threshold: 0.01       # 增加阈值，减少抖动
+
+# 滤波器配置（平滑运动）
+filtering:
+  enable: true
+  type: "ema"                  # 指数移动平均（Exponential Moving Average）
+  alpha: 0.15                  # 滤波系数，0.15=平滑但不太慢
+
+  # 如果需要更激进的滤波，降低alpha
+  # alpha: 0.05  # 极度平滑，但响应很慢
+  # alpha: 0.30  # 较快响应，但可能有抖动

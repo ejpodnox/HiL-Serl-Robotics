@@ -1,0 +1,161 @@
+# Kinova RL Environment Configuration
+
+# ============ Robot Configuration ============
+robot:
+  # 机器人基本参数
+  ip: "192.168.8.10"
+  dof: 8
+  gripper_dof: 1
+
+  # 关节限制 (根据Kinova Gen3手册)
+  joint_limits:
+    # 位置限制 (rad)
+    position_min: [-3.14, -2.41, -3.14, -2.66, -3.14, -2.23, -3.14]
+    position_max: [3.14, 2.41, 3.14, 2.66, 3.14, 2.23, 3.14]
+    # 速度限制 (rad/s)
+    velocity_max: [1.3, 1.3, 1.3, 1.3, 1.2, 1.2, 1.2]
+
+  # Home位置 (安全起始位置)
+  home_position: [0.0, 0.26, 0.0, -1.57, 0.0, 1.31, 0.0]
+
+# ============ VisionPro Configuration ============
+visionpro:
+  # VisionPro IP地址（用于遥操作数据收集）
+  ip: "192.168.1.125"
+  use_right_hand: true  # 使用右手还是左手
+
+# ============ ROS2 Topics ============
+ros2:
+  # Topic names (明天测试时可能需要调整)
+  joint_state_topic: "/joint_states"
+  velocity_command_topic: "/velocity_controller/commands"
+  gripper_command_topic: "/gripper_controller/gripper_cmd/goal"
+  
+  # 节点名称
+  node_name: "kinova_rl_env"
+
+# ============ Control Parameters ============
+control:
+  frequency: 20  # Hz, 控制频率
+  dt: 0.05       # 1/frequency, 自动计算但可以手动覆盖
+  
+  # Action scaling (安全起见，缩放到速度限制的一部分)
+  action_scale: 0.5  # action * action_scale * velocity_max
+  
+  # Episode limits
+  max_episode_steps: 500
+  
+  # 超时设置
+  reset_timeout: 5.0  # 秒, reset时的最大等待时间
+
+# ============ Observation Space ============
+observation:
+  # 包含哪些状态
+  include_joint_positions: true
+  include_joint_velocities: true
+  include_gripper_position: false  # Phase 2暂不用
+  include_end_effector_pose: false  # Phase 2暂不用
+  
+  # 状态维度 (自动计算，但这里记录方便查看)
+  # state_dim = 7 pos + 7 vel = 14 (Phase 2)
+  state_dim: 14
+
+# ============ Action Space ============
+action:
+  # Action类型
+  type: "joint_velocity"  # "joint_velocity" or "joint_position"
+  
+  # Action维度
+  dim: 7  # 7个关节 (Phase 2不包括gripper)
+  
+  # Action范围 (归一化后)
+  low: -1.0
+  high: 1.0
+
+# ============ Task Configuration ============
+task:
+  # 任务名称
+  name: "reaching"  # reaching, pick_and_place, insertion, etc.
+
+  # 目标位置 (TCP目标位姿，在base_link坐标系下)
+  # 格式: [x, y, z, qx, qy, qz, qw]
+  target_pose: [0.5, 0.0, 0.3, 0.0, 1.0, 0.0, 0.0]  # 示例：机械臂前方50cm，高度30cm
+
+  # 成功判定阈值
+  success_threshold:
+    position: 0.02  # 2cm，TCP距离目标的欧式距离
+    orientation: 0.1  # 可选，姿态误差阈值（暂不使用）
+
+  # 是否检查姿态
+  check_orientation: false  # reaching任务通常只检查位置
+
+# ============ Reward Configuration ============
+reward:
+  # Reward类型
+  type: "sparse"  # "sparse" or "dense" or "classifier"
+
+  # Sparse reward (Phase 2)
+  sparse_reward:
+    success: 1.0
+    failure: 0.0
+    step: 0.0  # 每步的基础奖励（通常为0或负值）
+
+  # Dense reward (可选)
+  dense_reward:
+    distance_scale: -1.0  # reward = distance_scale * distance_to_target
+    success_bonus: 1.0    # 到达目标后的额外奖励
+
+  # Reward classifier (Phase 4)
+  classifier:
+    enabled: false
+    checkpoint_path: null
+    threshold: 0.5
+
+# ============ Camera Configuration ============
+camera:
+  enabled: true  # 启用相机
+  backend: "webcam"  # 相机后端: "webcam" (USB相机), "realsense" (RealSense), "dummy" (测试)
+
+  # USB 相机配置 (backend: "webcam")
+  # Search your camera by: v4l2-ctl --list-devices
+  # python3 -c "import cv2; cap = cv2.VideoCapture(0); print('RealSense video0:', cap.isOpened()); cap.release()"
+  webcam_cameras:
+    wrist_1:
+      device_id: 9  # USB 设备 ID (/dev/video0)
+      image_size: [128, 128]  # (height, width)
+    wrist_2: # Can't use webcam and realsence at the same time, so just use realsence as RGB camera
+      device_id: 2  # /dev/video1
+      image_size: [128, 128]
+
+  # RealSense 相机配置 (backend: "realsense")
+  realsense_cameras:
+    wrist_1:
+      serial_number: null  # 留空自动检测，或填写序列号
+      topic: "/camera/wrist_1/color/image_raw"
+      image_size: [128, 128]
+    # wrist_2:
+    #   serial_number: null
+    #   topic: "/camera/wrist_2/color/image_raw"
+    #   image_size: [128, 128]
+
+  # 虚拟相机配置 (backend: "dummy")
+  dummy_cameras:
+    wrist_1:
+      image_size: [128, 128]
+
+  # 图像处理参数
+  image_size: [128, 128]  # 默认图像尺寸 (height, width)
+  crop: null  # 如果需要裁剪: [y_min, y_max, x_min, x_max]
+  color_mode: "RGB"  # "RGB" or "BGR"
+  normalize: false  # 是否归一化到 [0, 1]
+
+# ============ Logging & Debug ============
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  log_episode_stats: true
+  log_frequency: 10  # 每N步打印一次
+
+debug:
+  verbose: false
+  save_trajectories: false
+  trajectory_save_path: "./trajectories"
